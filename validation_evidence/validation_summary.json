@@ -1,0 +1,55 @@
+{
+  "environment": {
+    "OpenFOAM": "Foundation8 official 20210316 package",
+    "package_sha256": "c1e3c88f52ad93a1cb9d7e046c03ef9e1e513cab65c877b938ecfa9cd041ba88",
+    "gcc": "14.2.0",
+    "mpi": "OpenMPI5.0.7",
+    "scope": "isolated scratch runtime; not Gautschi"
+  },
+  "passed": [
+    "native solver compilation",
+    "native guarded constitutive library compilation",
+    "homogeneous shear exact regression (two fixtures)",
+    "exact zero-flow convergence stop after baseline plus 3 independent comparisons",
+    "4-rank one-rank-bad exponent guard: coordinated exit1 and all-rank snapshots",
+    "actual compact diagnostic collector on 4-rank guarded failure",
+    "actual two-rank run_peo_diagnostic wrapper to end cap with final fields and unconverged status",
+    "existing stopped Gly75 configuration helper and dictionary backup",
+    "case generation/package/static/convergence-policy tests"
+  ],
+  "newtonian_fixture": {
+    "scope": "synthetic zero-flow equilibrium, not experimental prediction",
+    "stop_time_s": 4e-06,
+    "consecutive_checks": 3
+  },
+  "mpi_guard_fixture": {
+    "scope": "synthetic invalid conformation; not original experimental failure reproduction",
+    "ranks": 4,
+    "bad_rank": 2,
+    "cell": 0,
+    "coordinate": [
+      0.625,
+      0.5,
+      0.5
+    ],
+    "mode": "M2",
+    "stage": 1,
+    "reason": "destruction_exp_overflow",
+    "exponent": 830.8920010177558,
+    "double_log_max": 709.782712893384,
+    "exit_code": 1,
+    "failure_reports": 4
+  },
+  "coarse_trial": {
+    "scope": "real coarse geometry 4MPI startup only; intentionally stopped",
+    "cells": 268992,
+    "wall_seconds": 237,
+    "reason_stopped": "local startup pressure solve reached1000iterations; actual original PEO failure not reproduced within this validation scope"
+  },
+  "not_established": [
+    "actual Gautschi diagnostic run",
+    "location and cause of original PEO failure",
+    "long-time PEO stationarity",
+    "mesh/time convergence"
+  ]
+}

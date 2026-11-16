@@ -1,0 +1,117 @@
+hwloc/linux: failed to find sysfs cpu topology directory, aborting linux discovery.
+/*---------------------------------------------------------------------------*\
+  =========                 |
+  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\    /   O peration     | Website:  https://openfoam.org
+    \\  /    A nd           | Version:  8
+     \\/     M anipulation  |
+\*---------------------------------------------------------------------------*/
+Build  : 8-1c9b5879390b
+Exec   : /workspace/scratch/5f2049707734/dep_update/Deposition/install/linux64GccDPInt32Opt/bin/rheoMaterialPointTest -case /workspace/scratch/5f2049707734/dep_update/validation_of8/guard_mpi_fixture -parallel
+Date   : Nov 17 2026
+Time   : 06:14:56
+Host   : "e1954a32800a"
+PID    : 545
+I/O    : uncollated
+Case   : /workspace/scratch/5f2049707734/dep_update/validation_of8/guard_mpi_fixture
+nProcs : 4
+Slaves : 
+3
+(
+"e1954a32800a.546"
+"e1954a32800a.547"
+"e1954a32800a.548"
+)
+
+Pstream initialized with:
+    floatTransfer      : 0
+    nProcsSimpleSum    : 0
+    commsType          : nonBlocking
+    polling iterations : 0
+sigFpe : Enabling floating point exception trapping (FOAM_SIGFPE).
+fileModificationChecking : Monitoring run-time modified files using timeStampMaster (fileModificationSkew 10)
+allowSystemOperations : Allowing user-supplied system call operations
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+Create time
+
+Create mesh for time = 0
+
+Selecting constitutive equation multiMode
+Selecting constitutive equation PTTLog
+Selecting thermoFunction: Constant
+Selecting thermoFunction: Constant
+Selecting constitutive equation PTTLog
+Selecting thermoFunction: Constant
+Selecting thermoFunction: Constant
+Model mode 1
+EPTT_DIAGNOSTIC model=M1 time=1e-05 dt=1e-05 inner=1 call=1 stage=0 maxExponent=0 minEigC=1 maxEigC=1 maxAbsTheta=0 maxAbsGradU=0 maxLogDtFOverLambda=-8.2940496401 maxLogDtRelaxationComponent=-4.50359962737e+15
+EPTT_DIAGNOSTIC model=M1 time=1e-05 dt=1e-05 inner=1 call=1 stage=0 maxExponent=0 minEigC=1 maxEigC=1 maxAbsTheta=0 maxAbsGradU=1000 maxLogDtFOverLambda=-8.2940496401 maxLogDtRelaxationComponent=-4.50359962737e+15
+EPTT_DIAGNOSTIC model=M1 time=1e-05 dt=1e-05 inner=1 call=1 stage=1 maxExponent=0 minEigC=1 maxEigC=1 maxAbsTheta=0 maxAbsGradU=1000 maxLogDtFOverLambda=-8.2940496401 maxLogDtRelaxationComponent=-4.50359962737e+15
+smoothSolver:  Solving for thetaM1xx, Initial residual = 0, Final residual = 0, No Iterations 0
+smoothSolver:  Solving for thetaM1xy, Initial residual = 1, Final residual = 0, No Iterations 1
+smoothSolver:  Solving for thetaM1xz, Initial residual = 0, Final residual = 0, No Iterations 0
+smoothSolver:  Solving for thetaM1yy, Initial residual = 0, Final residual = 0, No Iterations 0
+smoothSolver:  Solving for thetaM1yz, Initial residual = 0, Final residual = 0, No Iterations 0
+smoothSolver:  Solving for thetaM1zz, Initial residual = 0, Final residual = 0, No Iterations 0
+EPTT_DIAGNOSTIC model=M1 time=1e-05 dt=1e-05 inner=1 call=1 stage=2 maxExponent=0 minEigC=1 maxEigC=1 maxAbsTheta=0.01 maxAbsGradU=1000 maxLogDtFOverLambda=-8.2940496401 maxLogDtRelaxationComponent=-4.50359962737e+15
+EPTT_DIAGNOSTIC model=M1 time=1e-05 dt=1e-05 inner=1 call=1 stage=3 maxExponent=8.1383380815e-08 minEigC=0.990049833749 maxEigC=1.01005016708 maxAbsTheta=0.01 maxAbsGradU=1000 maxLogDtFOverLambda=-8.29404955872 maxLogDtRelaxationComponent=-4.50359962737e+15
+Model mode 2
+EPTT_DIAGNOSTIC model=M2 time=1e-05 dt=1e-05 inner=1 call=1 stage=0 maxExponent=830.892001018 minEigC=1 maxEigC=1000 maxAbsTheta=6.90775527898 maxAbsGradU=0 maxLogDtFOverLambda=823.13030988 maxLogDtRelaxationComponent=-4.50359962737e+15
+EPTT_DIAGNOSTIC model=M2 time=1e-05 dt=1e-05 inner=1 call=1 stage=0 maxExponent=830.892001018 minEigC=1 maxEigC=1000 maxAbsTheta=6.90775527898 maxAbsGradU=1000 maxLogDtFOverLambda=823.13030988 maxLogDtRelaxationComponent=-4.50359962737e+15
+EPTT_DIAGNOSTIC model=M2 time=1e-05 dt=1e-05 inner=1 call=1 stage=1 maxExponent=830.892001018 minEigC=1 maxEigC=1000 maxAbsTheta=6.90775527898 maxAbsGradU=1000 maxLogDtFOverLambda=823.13030988 maxLogDtRelaxationComponent=823.12930938
+[2] 
+[2] 
+[2] --> FOAM FATAL ERROR: 
+[2] ePTT diagnostic guard stopped before invalid arithmetic; inspect processor*/"postProcessing/epttDiagnostics/M2/1e-05_call1_stage1"/failure.txt. No stress was clipped.
+[2] 
+[2]     From function void Foam::depositionPTTDiagnostics::check(Foam::label, const Foam::volSymmTensorField&, const Foam::volSymmTensorField&, const Foam::volTensorField&, const Foam::volTensorField&, const Foam::volScalarField&, const Foam::volScalarField&, Foam::scalar, Foam::scalar, const Foam::volTensorField*, const Foam::volTensorField*) const
+[2]     in file constitutiveEquations/constitutiveEqs/utils/PTTLogDiagnostics.H at line 280.
+[2] 
+FOAM parallel run exiting
+[2] 
+[0] 
+[0] 
+[0] --> FOAM FATAL ERROR: 
+[0] ePTT diagnostic guard stopped before invalid arithmetic; inspect processor*/"postProcessing/epttDiagnostics/M2/1e-05_call1_stage1"/failure.txt. No stress was clipped.
+[0] 
+[0]     From function void Foam::depositionPTTDiagnostics::check(Foam::label, const Foam::volSymmTensorField&, const Foam::volSymmTensorField&, const Foam::volTensorField&, const Foam::volTensorField&, const Foam::volScalarField&, const Foam::volScalarField&, Foam::scalar, Foam::scalar, const Foam::volTensorField*, const Foam::volTensorField*) const
+[2] EPTT_DIAGNOSTIC_FAILURE model=M2 time=1e-05 inner=1 stage=1 reason=destruction_exp_overflow cell=0 patch=-1 face=-1 xyz=(0.625 0.5 0.5) exponent="830.89200101775583984" snapshot="/workspace/scratch/5f2049707734/dep_update/validation_of8/guard_mpi_fixture/processor2/postProcessing/epttDiagnostics/M2/1e-05_call1_stage1"
+[0]     in file constitutiveEquations/constitutiveEqs/utils/PTTLogDiagnostics.H at line 280.
+[0] 
+FOAM parallel run exiting
+[0] 
+[3] 
+[3] 
+[3] --> FOAM FATAL ERROR: 
+[3] ePTT diagnostic guard stopped before invalid arithmetic; inspect processor*/"postProcessing/epttDiagnostics/M2/1e-05_call1_stage1"/failure.txt. No stress was clipped.
+[3] 
+[3]     From function void Foam::depositionPTTDiagnostics::check(Foam::label, const Foam::volSymmTensorField&, const Foam::volSymmTensorField&, const Foam::volTensorField&, const Foam::volTensorField&, const Foam::volScalarField&, const Foam::volScalarField&, Foam::scalar, Foam::scalar, const Foam::volTensorField*, const Foam::volTensorField*) const
+[3]     in file constitutiveEquations/constitutiveEqs/utils/PTTLogDiagnostics.H at line 280.
+[3] 
+FOAM parallel run exiting
+[3] 
+[1] 
+[1] 
+[1] --> FOAM FATAL ERROR: 
+[1] ePTT diagnostic guard stopped before invalid arithmetic; inspect processor*/"postProcessing/epttDiagnostics/M2/1e-05_call1_stage1"/failure.txt. No stress was clipped.
+[1] 
+[1]     From function void Foam::depositionPTTDiagnostics::check(Foam::label, const Foam::volSymmTensorField&, const Foam::volSymmTensorField&, const Foam::volTensorField&, const Foam::volTensorField&, const Foam::volScalarField&, const Foam::volScalarField&, Foam::scalar, Foam::scalar, const Foam::volTensorField*, const Foam::volTensorField*) const
+[1]     in file constitutiveEquations/constitutiveEqs/utils/PTTLogDiagnostics.H at line 280.
+[1] 
+FOAM parallel run exiting
+[1] 
+--------------------------------------------------------------------------
+MPI_ABORT was invoked on rank 2 in communicator MPI COMM 3 SPLIT FROM 0
+  Proc: [[62050,1],2]
+  Errorcode: 1
+
+NOTE: invoking MPI_ABORT causes Open MPI to kill all MPI processes.
+You may or may not see output from other processes, depending on
+exactly when Open MPI kills them.
+--------------------------------------------------------------------------
+--------------------------------------------------------------------------
+prterun has exited due to process rank 0 with PID 0 on node e1954a32800a calling
+"abort". This may have caused other processes in the application to be
+terminated by signals sent by prterun (as reported here).
+--------------------------------------------------------------------------

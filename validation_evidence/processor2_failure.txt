@@ -1,0 +1,33 @@
+EPTT_DIAGNOSTIC_FAILURE
+mode M2
+stage 1
+time 1.0000000000000001e-05
+deltaT 1.0000000000000001e-05
+innerIteration 1
+call 1
+rank 2
+localFailure 1
+reason destruction_exp_overflow
+cell 0
+patch -1
+face -1
+xyz (0.625 0.5 0.5)
+exponent "830.89200101775583984"
+logScalarMax "709.78271289338399674"
+offendingValue "830.89200101775583984"
+theta (6.9077552789821368 0 0 0 0 0)
+tau (0 0 0 0 0 0)
+eigVals (1000 0 0 0 1 0 0 0 1)
+eigVecs (1 0 0 0 1 0 0 0 1)
+U (0 0 0)
+lambda 0.023488735159794105
+etaP 0.15192835835914398
+epsilon 0.83172372474249834
+zeta 0
+traceC "1002"
+logDtFOverLambda "823.13030988044730379"
+gradU (0 0 0 1000 0 0 0 0 0)
+relaxationBase (-42.531025753570503 0 0 0 0 0 0 0 0)
+previousSuccessfulGradTime -1
+previousSuccessfulGradCall -1
+Snapshot is NOT a restart checkpoint. theta_previousTime is from the previous physical time step; current fields are at the indicated constitutive stage.

@@ -1,0 +1,58 @@
+{
+  "scope": "Actual compiled ePTT constitutive equations in prescribed homogeneous shear; not contraction-flow validation",
+  "dt_s": 1e-05,
+  "inner_corrections": 4,
+  "relative_tolerance": 0.001,
+  "results": {
+    "selected_peo": {
+      "passed": true,
+      "gamma_s-1": 1000.0,
+      "time_s": 0.3,
+      "polymer_shear_Pa": 29.4496479716,
+      "N1_Pa": 875.150573678,
+      "analytical_polymer_shear_Pa": 29.449648150323632,
+      "analytical_N1_Pa": 875.1505752784154,
+      "relative_errors": [
+        6.068786646876121e-09,
+        1.8287315070251124e-09
+      ],
+      "modes_eta_lambda_epsilon": [
+        [
+          0.04112164164085602,
+          0.04,
+          0.0008138270262392983
+        ],
+        [
+          0.15192835835914398,
+          0.023488735159794105,
+          0.8317237247424983
+        ]
+      ]
+    },
+    "strong_nonlinearity_regression": {
+      "passed": true,
+      "gamma_s-1": 1000.0,
+      "time_s": 0.3,
+      "polymer_shear_Pa": 29.0853471742,
+      "N1_Pa": 57.8913584351,
+      "analytical_polymer_shear_Pa": 29.085347174161605,
+      "analytical_N1_Pa": 57.8913584350838,
+      "relative_errors": [
+        1.3200522069375552e-12,
+        2.798409782264221e-13
+      ],
+      "modes_eta_lambda_epsilon": [
+        [
+          0.13588580220713073,
+          0.04,
+          0.5323201163935225
+        ],
+        [
+          0.05716419779286927,
+          0.002,
+          0.6802672592220357
+        ]
+      ]
+    }
+  }
+}

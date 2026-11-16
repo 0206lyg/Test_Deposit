@@ -1,0 +1,16 @@
+EPTT_DIAGNOSTIC_FAILURE
+mode M2
+stage 1
+time 1.0000000000000001e-05
+deltaT 1.0000000000000001e-05
+innerIteration 1
+call 1
+rank 0
+localFailure 0
+reason none
+cell -1
+patch -1
+face -1
+previousSuccessfulGradTime -1
+previousSuccessfulGradCall -1
+Snapshot is NOT a restart checkpoint. theta_previousTime is from the previous physical time step; current fields are at the indicated constitutive stage.
