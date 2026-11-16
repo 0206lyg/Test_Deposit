@@ -1,0 +1,51 @@
+{
+  "status": "stationary",
+  "solver_exit_code": 0,
+  "phase": "finished",
+  "checked_at_utc": "2026-11-11T19:14:23.962610+00:00",
+  "case": "/workspace/scratch/5f2049707734/validation_zero_flow_fixture",
+  "checkpoint": {
+    "time": 3e-06,
+    "time_name": "3e-06",
+    "parallel": false,
+    "ranks": 1,
+    "required_fields": [
+      "U",
+      "p"
+    ]
+  },
+  "latest_metrics": {
+    "time": 3e-06,
+    "Qin_m3_s": 0.0,
+    "Qout_m3_s": 0.0,
+    "massImbalance": 0.0,
+    "deltaP_Pa": 0.0,
+    "wallShearMean_Pa": 0.0,
+    "wallShearMax_Pa": 0.0,
+    "downstreamWallShearMean_Pa": 0.0,
+    "approachFlux_m3_s": 0.0,
+    "approachNetFlux_m3_s": 0.0,
+    "approachOffset_m": 2e-06,
+    "relativeU": 0.0,
+    "relativeTau": 0.0,
+    "relativeWall": 0.0,
+    "relativeApproach": 0.0,
+    "relativePressure": 0.0,
+    "maxVelocity_m_s": 0.0,
+    "maxN1_Pa": 0.0,
+    "stableDuration_s": 1e-06
+  },
+  "stationarity_marker": {
+    "status": "stationary",
+    "time": 3e-06,
+    "relativeU": 0,
+    "relativeTau": 0,
+    "relativeWall": 0,
+    "relativeApproach": 0,
+    "relativePressure": 0,
+    "massImbalance": 0,
+    "stableDuration_s": 1e-06
+  },
+  "errors": [],
+  "warnings": []
+}

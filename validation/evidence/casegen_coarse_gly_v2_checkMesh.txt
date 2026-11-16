@@ -1,0 +1,87 @@
+[1794423360.729865] [a82ec26d852f:180  :f]        vfs_fuse.c:413  UCX  ERROR failed to create VFS socket: Operation not permitted
+/*---------------------------------------------------------------------------*\
+  =========                 |
+  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\    /   O peration     | Website:  https://openfoam.org
+    \\  /    A nd           | Version:  8
+     \\/     M anipulation  |
+\*---------------------------------------------------------------------------*/
+Build  : 8-1c9b5879390b
+Exec   : checkMesh -case /workspace/scratch/5f2049707734/casegen_coarse_gly_v2
+Date   : Nov 12 2026
+Time   : 03:56:00
+Host   : "a82ec26d852f"
+PID    : 180
+I/O    : uncollated
+Case   : /workspace/scratch/5f2049707734/casegen_coarse_gly_v2
+nProcs : 1
+sigFpe : Enabling floating point exception trapping (FOAM_SIGFPE).
+fileModificationChecking : Monitoring run-time modified files using timeStampMaster (fileModificationSkew 10)
+allowSystemOperations : Allowing user-supplied system call operations
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+Create time
+
+Create polyMesh for time = 0
+
+Time = 0
+
+Mesh stats
+    points:           288975
+    faces:            826584
+    internal faces:   787368
+    cells:            268992
+    faces per cell:   6
+    boundary patches: 9
+    point zones:      0
+    face zones:       0
+    cell zones:       0
+
+Overall number of cells of each type:
+    hexahedra:     268992
+    prisms:        0
+    wedges:        0
+    pyramids:      0
+    tet wedges:    0
+    tetrahedra:    0
+    polyhedra:     0
+
+Checking topology...
+    Boundary definition OK.
+    Cell to face addressing OK.
+    Point usage OK.
+    Upper triangular ordering OK.
+    Face vertices OK.
+    Number of regions: 1 (OK).
+
+Checking patch topology for multiply connected surfaces...
+    Patch               Faces    Points   Surface topology                  
+    inlet               1584     1675     ok (non-closed singly connected)  
+    outlet              432      475      ok (non-closed singly connected)  
+    wallsUpstream       6096     6400     ok (non-closed singly connected)  
+    wallsContraction    1152     1250     ok (non-closed singly connected)  
+    wallsDownstream     7536     7900     ok (non-closed singly connected)  
+    bottomUpstream      8382     8576     ok (non-closed singly connected)  
+    topUpstream         8382     8576     ok (non-closed singly connected)  
+    bottomDownstream    2826     3002     ok (non-closed singly connected)  
+    topDownstream       2826     3002     ok (non-closed singly connected)  
+
+Checking geometry...
+    Overall domain bounding box (-0.01 -9e-05 -5e-05) (0.015 9e-05 5e-05)
+    Mesh has 3 geometric (non-empty/wedge) directions (1 1 1)
+    Mesh has 3 solution (non-empty) directions (1 1 1)
+    Boundary openness (-1.5538054058e-18 -4.19751087176e-16 7.68927581732e-16) OK.
+    Max cell openness = 2.15506963752e-16 OK.
+    Max aspect ratio = 467.270573371 OK.
+    Minimum face area = 8.55484004914e-13. Maximum face area = 3.19794001197e-09.  Face area magnitudes OK.
+    Min volume = 1.4775570973e-18. Max volume = 2.06544987555e-14.  Total volume = 2.475e-10.  Cell volumes OK.
+    Mesh non-orthogonality Max: 0 average: 0
+    Non-orthogonality check OK.
+    Face pyramids OK.
+    Max skewness = 1.00323348464e-13 OK.
+    Coupled point location match (average 0) OK.
+
+Mesh OK.
+
+End
+

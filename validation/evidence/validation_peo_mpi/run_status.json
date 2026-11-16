@@ -1,0 +1,49 @@
+{
+  "status": "unconverged",
+  "solver_exit_code": 0,
+  "phase": "finished",
+  "checked_at_utc": "2026-11-11T19:10:08.077965+00:00",
+  "case": "/workspace/scratch/5f2049707734/validation_peo_mpi",
+  "checkpoint": {
+    "time": 4e-05,
+    "time_name": "4e-05",
+    "parallel": true,
+    "ranks": 2,
+    "required_fields": [
+      "U",
+      "eigVals_mode1",
+      "eigVals_mode2",
+      "eigVecs_mode1",
+      "eigVecs_mode2",
+      "p",
+      "tau_mode1",
+      "tau_mode2",
+      "theta_mode1",
+      "theta_mode2"
+    ]
+  },
+  "latest_metrics": {
+    "time": 4e-05,
+    "Qin_m3_s": 1.388888888890001e-10,
+    "Qout_m3_s": 1.388889076426046e-10,
+    "massImbalance": 1.350259529380425e-07,
+    "deltaP_Pa": 22799.10250432384,
+    "wallShearMean_Pa": 1.030785244455737,
+    "wallShearMax_Pa": 5.0421477848258,
+    "downstreamWallShearMean_Pa": 27.46407114049498,
+    "approachFlux_m3_s": 1.90779265215675e-12,
+    "approachNetFlux_m3_s": 1.394908757109226e-12,
+    "approachOffset_m": 2e-06,
+    "relativeU": 0.02484357920403245,
+    "relativeTau": 0.03092592377663601,
+    "relativeWall": 0.08100501418665654,
+    "relativeApproach": 0.01235111503259801,
+    "relativePressure": 0.03269540062285562,
+    "maxVelocity_m_s": 0.05384504902533727,
+    "maxN1_Pa": 0.8935762752362439,
+    "stableDuration_s": 0.0
+  },
+  "stationarity_marker": null,
+  "errors": [],
+  "warnings": []
+}

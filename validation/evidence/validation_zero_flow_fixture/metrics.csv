@@ -1,0 +1,4 @@
+time,Qin_m3_s,Qout_m3_s,massImbalance,deltaP_Pa,wallShearMean_Pa,wallShearMax_Pa,downstreamWallShearMean_Pa,approachFlux_m3_s,approachNetFlux_m3_s,approachOffset_m,relativeU,relativeTau,relativeWall,relativeApproach,relativePressure,maxVelocity_m_s,maxN1_Pa,stableDuration_s
+1e-06,0,0,0,0,0,0,0,0,0,2e-06,1,1,1,1,1,0,0,0
+2e-06,0,0,0,0,0,0,0,0,0,2e-06,0,0,0,0,0,0,0,0
+3e-06,0,0,0,0,0,0,0,0,0,2e-06,0,0,0,0,0,0,0,1e-06

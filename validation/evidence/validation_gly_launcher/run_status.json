@@ -1,0 +1,41 @@
+{
+  "status": "unconverged",
+  "solver_exit_code": 0,
+  "phase": "finished",
+  "checked_at_utc": "2026-11-11T19:09:15.280805+00:00",
+  "case": "/workspace/scratch/5f2049707734/validation_gly_launcher",
+  "checkpoint": {
+    "time": 0.0002,
+    "time_name": "0.0002",
+    "parallel": false,
+    "ranks": 1,
+    "required_fields": [
+      "U",
+      "p"
+    ]
+  },
+  "latest_metrics": {
+    "time": 0.0002,
+    "Qin_m3_s": 1.388888888890001e-10,
+    "Qout_m3_s": 1.38888889018304e-10,
+    "massImbalance": 9.30988387987176e-10,
+    "deltaP_Pa": 121060.2921507752,
+    "wallShearMean_Pa": 3.789393661011133,
+    "wallShearMax_Pa": 20.35410679833518,
+    "downstreamWallShearMean_Pa": 139.0998561115804,
+    "approachFlux_m3_s": 3.912964262499739e-12,
+    "approachNetFlux_m3_s": 3.90108004272709e-12,
+    "approachOffset_m": 2e-06,
+    "relativeU": 0.0001651870780772417,
+    "relativeTau": 0.0001610070675085664,
+    "relativeWall": 0.0003725879435072739,
+    "relativeApproach": 0.0005379290212166673,
+    "relativePressure": 2.5713233891977e-05,
+    "maxVelocity_m_s": 0.05025904652924829,
+    "maxN1_Pa": 0.0,
+    "stableDuration_s": 0.0
+  },
+  "stationarity_marker": null,
+  "errors": [],
+  "warnings": []
+}

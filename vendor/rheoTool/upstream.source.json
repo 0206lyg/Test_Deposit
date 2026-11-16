@@ -1,0 +1,30 @@
+{
+  "upstream": "https://github.com/fppimenta/rheoTool",
+  "commit": "81f3e8cf6079e84afd04c5d847389c338404b268",
+  "source_sha256": {
+    "of90/src/libs/constitutiveEquations/constitutiveModel/constitutiveModel.C": "3efc7bcecbe9c4f095ab2d816cf91ae80247e818243d8540e13b08c1a8b1c124",
+    "of90/src/libs/constitutiveEquations/constitutiveModel/constitutiveModel.H": "a0d40ffc6eab93cd06e6338b6d7377c076f837b83c1ac72708ca350d4104f310",
+    "of90/src/libs/constitutiveEquations/constitutiveEqs/constitutiveEq/constitutiveEq.C": "7af646edc2504dd2e6d9615b99591af40b528a3c6ddb5a507322dc8841cbdca0",
+    "of90/src/libs/constitutiveEquations/constitutiveEqs/constitutiveEq/constitutiveEq.H": "43d80f106af0fbc12843dc94a28a7a94c330b0e9f627420376aae34d95d93180",
+    "of90/src/libs/constitutiveEquations/constitutiveEqs/constitutiveEq/newConstitutiveEq.C": "1f1cf419ed3e5c6a6a3f2172679b1ddb5b8740ef149da517225dd5709f50e167",
+    "of90/src/libs/constitutiveEquations/constitutiveEqs/PTT/PTTLog/PTTLog.C": "e25b910951f08f8e428267582c147032fcaf59bdb2a1bc55cbe6a95aa6f6c787",
+    "of90/src/libs/constitutiveEquations/constitutiveEqs/PTT/PTTLog/PTTLog.H": "58fde54fa3dae61a30590036603c590936f01b6d5c48d7bd3873a72e1c34ba67",
+    "of90/src/libs/constitutiveEquations/constitutiveEqs/Giesekus/GiesekusLog/GiesekusLog.C": "42c6923b2fc605cc4ce50292a34a7fe178c0479f087340bbaedf0076f302dded",
+    "of90/src/libs/constitutiveEquations/constitutiveEqs/Giesekus/GiesekusLog/GiesekusLog.H": "d885d19b0b70790581b709ae81220b31f94cdc55aefbde02062f30cf19fbbe72",
+    "of90/src/libs/constitutiveEquations/constitutiveEqs/multiMode/multiMode.C": "65a097ffeb7808434a5f2b919876db8a249c171320856621c20720f5a7711a9a",
+    "of90/src/libs/constitutiveEquations/constitutiveEqs/multiMode/multiMode.H": "f10b3bacb5edd4654dc84973d178348ed093a69f2a4ab64424193c56548b6f67",
+    "of90/src/libs/constitutiveEquations/constitutiveEqs/GNF/Newtonian/Newtonian.C": "b59ef1116238bce1b6326f2cb1f79c4b06be2226ea95043e57bcd16919f5c49a",
+    "of90/src/libs/constitutiveEquations/constitutiveEqs/GNF/Newtonian/Newtonian.H": "ad286a8cefa9d064ee47df5cae2af70e69746dd9fb0c7f635f454c3c404e9b97",
+    "of90/src/libs/constitutiveEquations/constitutiveEqs/GNF/CarreauYasuda/CarreauYasuda.C": "ed5542be68615c0cfd88388367af97d2f20afdeb0bf3f2bca61b2a4afb73608a",
+    "of90/src/libs/constitutiveEquations/constitutiveEqs/GNF/CarreauYasuda/CarreauYasuda.H": "df6fd3bb47a101ee36e896a8345f777a8113193622409d0d03c45184f04bf116",
+    "of90/src/libs/thermo/thermoFunctions/thermoFunctions/newThermoFunction.C": "061aee8440a84f41ee9813a516d34b383ba245b2eb863d3d7db49b4d1a39f0c6",
+    "of90/src/libs/thermo/thermoFunctions/thermoFunctions/thermoFunction.C": "db97bb66ecc81c31d3abbfb8da4f621f7a36128fcff244a020018148a7b63443",
+    "of90/src/libs/thermo/thermoFunctions/thermoFunctions/thermoFunction.H": "d6742c4fb5f28eac0820ce08774ae0c8a8c1d985cec9488a92fcadda6ca3f621",
+    "of90/src/libs/thermo/thermoFunctions/Constant/Constant.C": "faf88b49d28a18fe19ee1c5e888d2f138f21de67c8cbc99cce36d727ba1c9970",
+    "of90/src/libs/thermo/thermoFunctions/Constant/Constant.H": "450afbfdf30a30d130768d71409bc460b35c963af8830415c98fc601b10ab3d1",
+    "of90/src/libs/constitutiveEquations/constitutiveEqs/utils/jacobi.H": "b468cb7cd38a323291997e2b21c221fa43cba8743936358d8fcb944d1c99ae3f",
+    "of90/src/libs/constitutiveEquations/constitutiveEqs/utils/boilerLog.H": "eb060eea0a83d037140737d578d5bf12c9493121d7c0a03aa9c14059cf02d17f",
+    "LICENSE": "589ed823e9a84c56feb95ac58e7cf384626b9cbf4fda2a907bc36e103de1bad2"
+  },
+  "manifest_sha256": "5888b2a934a4a734ccf04fa42e97a213a65287135c3bd8a6d6b90f50ffc82322"
+}

@@ -1,0 +1,41 @@
+{
+  "status": "unconverged",
+  "solver_exit_code": 0,
+  "phase": "finished",
+  "checked_at_utc": "2026-11-11T19:11:55.993174+00:00",
+  "case": "/workspace/scratch/5f2049707734/validation_cross_launcher",
+  "checkpoint": {
+    "time": 2e-06,
+    "time_name": "2e-06",
+    "parallel": false,
+    "ranks": 1,
+    "required_fields": [
+      "U",
+      "p"
+    ]
+  },
+  "latest_metrics": {
+    "time": 2e-06,
+    "Qin_m3_s": 1.388888888888889e-10,
+    "Qout_m3_s": 1.388867703777351e-10,
+    "massImbalance": 1.52532803075363e-05,
+    "deltaP_Pa": 373832.3857608056,
+    "wallShearMean_Pa": 26.45610280841764,
+    "wallShearMax_Pa": 54.28702809390402,
+    "downstreamWallShearMean_Pa": 101.4299412973729,
+    "approachFlux_m3_s": 9.964512118312841e-12,
+    "approachNetFlux_m3_s": 9.964512118312841e-12,
+    "approachOffset_m": 2e-06,
+    "relativeU": 0.5228326253746478,
+    "relativeTau": 0.3289977723796024,
+    "relativeWall": 0.2487940138680286,
+    "relativeApproach": 0.5164175154189263,
+    "relativePressure": 0.1122116049941938,
+    "maxVelocity_m_s": 0.03635011481071736,
+    "maxN1_Pa": 0.0,
+    "stableDuration_s": 0.0
+  },
+  "stationarity_marker": null,
+  "errors": [],
+  "warnings": []
+}

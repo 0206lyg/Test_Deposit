@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "description": "Initial particle-free, full-3D 4:1 planar contraction; dimensional SI units.",
+  "geometry_m": {
+    "upstream_width": 0.00018,
+    "downstream_width": 0.000045,
+    "height": 0.0001,
+    "upstream_length": 0.01,
+    "downstream_length": 0.015
+  },
+  "flow_rates_mL_h": [0.3, 0.5, 0.7],
+  "temperature_K": 293.15,
+  "fluids": {
+    "gly75": {
+      "description": "75 wt% aqueous glycerol, Newtonian",
+      "model": "Newtonian",
+      "rho_kg_m3": 1183.0,
+      "eta_Pa_s": 0.035,
+      "density_source": "main.pdf section 2.4: approximately 1183 kg/m3"
+    },
+    "cross": {
+      "description": "Optional elasticity-free PEO control, exact Cross law expressed as Carreau-Yasuda",
+      "model": "CarreauYasuda",
+      "rho_kg_m3": 998.0,
+      "eta_zero_Pa_s": 0.2,
+      "eta_inf_Pa_s": 0.00695,
+      "k_s": 0.011,
+      "a": 0.718,
+      "n": 0.282,
+      "density_source": "Same carrier density as the PEO viscoelastic case",
+      "parameter_provenance": "a=0.718 and n=1-a make the Carreau-Yasuda exponent (n-1)/a exactly -1, reproducing the paper's Cross viscosity. Optional control, not an additional experimental medium."
+    },
+    "peo": {
+      "description": "1 wt% aqueous PEO, selected two-mode exponential simplified PTT",
+      "model": "multiMode",
+      "rho_kg_m3": 998.0,
+      "eta_s_Pa_s": 0.00695,
+      "eta_zero_Pa_s": 0.2,
+      "density_source": "main.pdf section 2.4 uses water density for PEO; the stated water density is 998 kg/m3",
+      "modes": [
+        {"name": "_mode1", "eta_p_Pa_s": 0.04112164164085602, "lambda_s": 0.04, "epsilon": 0.0008138270262392983},
+        {"name": "_mode2", "eta_p_Pa_s": 0.15192835835914398, "lambda_s": 0.023488735159794105, "epsilon": 0.8317237247424983}
+      ],
+      "zeta": 0.0,
+      "destruction_function": "exponential",
+      "parameter_provenance": "User-selected rheology fit; eta_s is an effective background viscosity, not independently measured water viscosity. CaBER time is assigned to the longest model relaxation time. Normal and extensional stresses remain model predictions."
+    }
+  },
+  "mesh_levels": {
+    "smoke": {"nx_up_far": 20, "nx_up_mid": 8, "nx_up_near": 12, "nx_down_near": 12, "nx_down_mid": 8, "nx_down_far": 30, "ny_core": 6, "ny_wing": 8, "nz": 8},
+    "coarse": {"nx_up_far": 55, "nx_up_mid": 24, "nx_up_near": 48, "nx_down_near": 48, "nx_down_mid": 24, "nx_down_far": 85, "ny_core": 18, "ny_wing": 24, "nz": 24},
+    "medium": {"nx_up_far": 83, "nx_up_mid": 36, "nx_up_near": 72, "nx_down_near": 72, "nx_down_mid": 36, "nx_down_far": 128, "ny_core": 28, "ny_wing": 36, "nz": 36},
+    "fine": {"nx_up_far": 124, "nx_up_mid": 54, "nx_up_near": 108, "nx_down_near": 108, "nx_down_mid": 54, "nx_down_far": 192, "ny_core": 42, "ny_wing": 54, "nz": 54}
+  },
+  "analysis_defaults": {
+    "near_wall_offsets_m": [0.000002, 0.000005, 0.00001],
+    "corner_exclusion_m": 0.000002,
+    "inlet_particle_concentration": "Not imposed: report fluid approach flux or normalize by Q; multiply by a separately specified uniform reference concentration if desired.",
+    "flux_definition": "Integral over a finite wall-offset surface of max(-U dot n_wall_into_fluid, 0) dA. This is gross inward advective volume flux, not adsorption rate or unique-particle capture efficiency.",
+    "wall_stress_definition": "Tangential projection of (2 eta_s D + summed polymer tau) dot n. Pressure cancels from tangential traction. Newtonian uses 2 eta D.",
+    "sharp_corner_caution": "Do not use a sharp-corner pointwise maximum stress as a mesh-convergence target. Compare fixed physical regions with corner exclusion, area-weighted statistics and integrals."
+  }
+}
