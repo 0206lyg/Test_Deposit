@@ -17,12 +17,12 @@ def header(kind, name):
     return f"FoamFile {{version 2.0; format ascii; class {kind}; object {name};}}\n"
 
 
-def fixture(path, modes, gamma, dt, duration, inner):
+def fixture(path, modes, gamma, dt, duration, inner, rotation=None):
     for d in ("0", "constant", "system"):
         (path / d).mkdir(parents=True, exist_ok=True)
     (path / "system/blockMeshDict").write_text(header("dictionary", "blockMeshDict") + """convertToMeters 1;
 vertices ((0 0 0)(1 0 0)(1 1 0)(0 1 0)(0 0 1)(1 0 1)(1 1 1)(0 1 1));
-blocks (hex (0 1 2 3 4 5 6 7) (1 1 1) simpleGrading (1 1 1));
+blocks (hex (0 1 2 3 4 5 6 7) (3 1 1) simpleGrading (1 1 1));
 edges ();
 boundary (walls {type wall; faces ((0 4 7 3)(1 2 6 5)(0 1 5 4)(3 7 6 2)(0 3 2 1)(4 5 6 7));});
 mergePatchPairs ();
@@ -33,6 +33,9 @@ writeControl timeStep; writeInterval 1000000; purgeWrite 0; writeFormat ascii;
 writePrecision 12; writeCompression off; timeFormat general; timePrecision 12;
 runTimeModifiable false; shearRate {gamma:.17g}; innerCorrections {inner};
 """)
+    if rotation is not None:
+        with (path / "system/controlDict").open("a") as f:
+            f.write("rotation (" + " ".join(f"{v:.17g}" for row in rotation for v in row) + ");\n")
     (path / "system/fvSchemes").write_text(header("dictionary", "fvSchemes") + """ddtSchemes {default Euler;}
 gradSchemes {default Gauss linear;}
 divSchemes {default Gauss upwind;}
@@ -109,28 +112,48 @@ def main():
         raise SystemExit(f"Executable missing: {executable}")
     config = json.loads((project / "config/experiment.json").read_text())
     baseline = [(m["eta_p_Pa_s"], m["lambda_s"], m["epsilon"]) for m in config["fluids"]["peo"]["modes"]]
-    candidates = {"selected_peo": baseline, "strong_nonlinearity_regression": [(.13588580220713073, .04, .5323201163935225), (.05716419779286927, .002, .6802672592220357)]}
+    identity = [[1.,0.,0.],[0.,1.,0.],[0.,0.,1.]]
+    rotation = [[-2/3,2/15,11/15],[2/3,-1/3,2/3],[1/3,14/15,2/15]]
+    candidates = {"selected_peo": (baseline, identity),
+        "strong_nonlinearity_regression": ([(.13588580220713073, .04, .5323201163935225), (.05716419779286927, .002, .6802672592220357)], identity),
+        "selected_peo_rotated_3d": (baseline, rotation)}
     results = {}
-    for name, modes in candidates.items():
+    for name, (modes, rotation) in candidates.items():
         case = work / name
-        fixture(case, modes, args.gamma, args.dt, args.duration, args.inner)
+        fixture(case, modes, args.gamma, args.dt, args.duration, args.inner, rotation)
         with (case / "log.blockMesh").open("w") as log:
             subprocess.run(["blockMesh", "-case", str(case)], stdout=log, stderr=subprocess.STDOUT, check=True)
         proc = subprocess.Popen([str(executable), "-case", str(case)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-        final = None
+        final = full_tensor = None
+        algebra_passed = False
         with (case / "log.audit").open("w") as log:
             for line in proc.stdout:
                 if line.startswith("AUDIT") or "ERROR" in line or "Warning" in line:
                     log.write(line)
                 if line.startswith("AUDIT_FINAL "):
                     final = tuple(map(float, line.split()[1:]))
-        if proc.wait() != 0 or final is None:
+                if line.startswith("AUDIT_TENSOR "):
+                    full_tensor = tuple(map(float, line.split()[1:]))
+                if line.startswith("AUDIT_ALGEBRA_PASS "):
+                    algebra_passed = True
+        if proc.wait() != 0 or final is None or full_tensor is None or not algebra_passed:
             raise SystemExit(f"Material-point executable failed; inspect {case / 'log.audit'}")
-        expected = exact(modes, args.gamma)
+        shear, normal = exact(modes, args.gamma)
+        reference = [[normal,shear,0.],[shear,0.,0.],[0.,0.,0.]]
+        rotated = [[sum(rotation[i][k]*reference[k][l]*rotation[j][l]
+                        for k in range(3) for l in range(3)) for j in range(3)] for i in range(3)]
+        expected_tensor = [rotated[i][j] for i,j in ((0,0),(0,1),(0,2),(1,1),(1,2),(2,2))]
+        expected = (rotated[0][1],rotated[0][0]-rotated[1][1])
         errors = [abs(a-b)/max(abs(b), 1e-30) for a, b in zip(final[1:], expected)]
-        passed = all(math.isfinite(e) and e <= args.relative_tolerance for e in errors)
+        scale=max(abs(v) for v in expected_tensor)
+        tensor_errors=[abs(a-b)/max(abs(b),1e-8*scale,1e-30) for a,b in zip(full_tensor,expected_tensor)]
+        passed = all(math.isfinite(e) and e <= args.relative_tolerance for e in errors+tensor_errors)
         results[name] = {"passed": passed, "gamma_s-1": args.gamma, "time_s": final[0], "polymer_shear_Pa": final[1], "N1_Pa": final[2], "analytical_polymer_shear_Pa": expected[0], "analytical_N1_Pa": expected[1], "relative_errors": errors, "modes_eta_lambda_epsilon": modes}
-        print(f"{name}: {'PASS' if passed else 'FAIL'}, shear={final[1]:.9g} Pa, N1={final[2]:.9g} Pa, max relative error={max(errors):.3g}", flush=True)
+        results[name].update({"rotation":rotation,"algebra_checks_passed":algebra_passed,
+            "stress_components_order":["xx","xy","xz","yy","yz","zz"],
+            "stress_components_Pa":full_tensor,"analytical_stress_components_Pa":expected_tensor,
+            "tensor_relative_errors":tensor_errors})
+        print(f"{name}: {'PASS' if passed else 'FAIL'}, shear={final[1]:.9g} Pa, N1={final[2]:.9g} Pa, max relative error={max(errors+tensor_errors):.3g}", flush=True)
     (work / "report.json").write_text(json.dumps({"scope": "Actual compiled ePTT constitutive equations in prescribed homogeneous shear; not contraction-flow validation", "dt_s": args.dt, "inner_corrections": args.inner, "relative_tolerance": args.relative_tolerance, "results": results}, indent=2) + "\n")
     if not all(r["passed"] for r in results.values()):
         raise SystemExit(1)
