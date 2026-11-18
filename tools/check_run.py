@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Check saved fields and metric histories; solver completion is not stationarity."""
+"""Verify the converged iteration, metric history and restart fields agree."""
 import argparse
 import csv
+from collections import Counter
 from datetime import datetime, timezone
 import gzip
 import json
@@ -31,7 +32,8 @@ def fields_from_initial(case):
     for path in (case / "0").glob("*"):
         if path.is_file():
             try:
-                text = path.read_text(errors="ignore")[:8192]
+                with path.open(errors="ignore") as stream:
+                    text = stream.read(8192)
                 if re.search(r"\bclass\s+vol(?:Scalar|Vector|Tensor|SymmTensor)Field\s*;", text):
                     fields.add(path.name)
             except OSError:
@@ -64,7 +66,7 @@ def complete_time(folder, fields):
                     tail = stream.read(8192)
             # OpenFOAM writes this footer only after the complete field. The
             # generated initial dictionaries intentionally have no footer.
-            finished = re.search(rb"//\s*\*{5,}\s*//\s*$", tail) if time_value(folder.name) != 0 else tail.rstrip().endswith(b"}")
+            finished = re.search(rb"//\s*\*{5,}\s*//\s*$", tail) or (time_value(folder.name) == 0 and tail.rstrip().endswith(b"}"))
             if b"FoamFile" not in head or not finished:
                 return False
         except (OSError, EOFError):
@@ -88,23 +90,26 @@ def checkpoint(case, ranks):
         valid = {}
         for path in root.iterdir():
             value = time_value(path.name)
-            if path.is_dir() and value is not None and complete_time(path, fields):
-                valid[value] = path.name
+            if value is not None and path.is_dir():
+                required = fields + ["phi"] if value > 0 else fields
+                if complete_time(path, required):
+                    valid[value] = path.name
         times = set(valid) if times is None else times & set(valid)
         names.update(valid)
     if not times:
         raise ValueError("No complete common checkpoint containing all initial fields was found.")
     latest = max(times)
     return {"time": latest, "time_name": names[latest], "parallel": bool(processors),
-            "ranks": len(processors) if processors else 1, "required_fields": fields}
+            "ranks": len(processors) if processors else 1,
+            "required_fields": fields + ["phi"] if latest > 0 else fields}
 
 
 def metrics(path):
     rows, invalid, final_valid = {}, 0, True
     with path.open(newline="") as stream:
         reader = csv.DictReader(line for line in stream if line.strip() and not line.startswith("#"))
-        if not reader.fieldnames or "time" not in reader.fieldnames:
-            raise ValueError("Metrics CSV has no 'time' header.")
+        if not reader.fieldnames or "iteration" not in reader.fieldnames:
+            raise ValueError("Expected steady metrics with an 'iteration' header.")
         fields = reader.fieldnames
         for raw in reader:
             try:
@@ -113,7 +118,7 @@ def metrics(path):
                 row = {key: float(raw[key]) for key in fields}
                 if not all(math.isfinite(value) for value in row.values()):
                     raise ValueError("nonfinite metric")
-                rows[row["time"]] = row
+                rows[row["iteration"]] = row
                 final_valid = True
             except (ValueError, TypeError, KeyError):
                 invalid += 1
@@ -125,16 +130,13 @@ def metrics(path):
 
 def prepare_resume(case, info):
     if info["time"] <= 0:
-        raise ValueError("No evolved checkpoint exists; --resume requires a saved time greater than zero.")
+        raise ValueError("No evolved checkpoint exists; --resume requires a saved iteration greater than zero.")
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     directory = case / "postProcessing/deposition"
     marker = directory / "stationary.json"
     archive_marker = False
     if marker.exists():
-        data = json.loads(marker.read_text())
-        when = float(data["time"])
-        if not math.isfinite(when) or when > info["time"] + 1e-10:
-            raise ValueError("Stationarity marker is newer than the complete checkpoint; inspect the case before resuming.")
+        # A crash can leave a newer marker than the last complete common write.
         archive_marker = True
     history = directory / "metrics.csv"
     history_data = None
@@ -154,11 +156,39 @@ def prepare_resume(case, info):
             writer.writerows(rows[t] for t in sorted(rows) if t <= info["time"] + 1e-10)
 
 
+def check_profiles(case, iteration):
+    """Reject stale or partial profile files even if a valid marker survived."""
+    output = case / "postProcessing/deposition"
+    metadata = json.loads((case / "metadata.json").read_text())
+    boundary = (case / "constant/polyMesh/boundary").read_text()
+    expected = Counter()
+    for key, patch in (("upstream","wallsUpstream"), ("step","wallsContraction"), ("downstream","wallsDownstream")):
+        found = re.search(r"\b" + patch + r"\s*\{[^}]*?\bnFaces\s+(\d+)\s*;", boundary, re.S)
+        if not found:
+            raise ValueError(f"Cannot read face count of {patch}.")
+        expected[key] = int(found[1])
+    tables = (("wall_profile.csv", expected),
+              ("flow_cells.csv", Counter(cells=metadata["mesh"]["estimated_cells"])))
+    for filename, counts in tables:
+        rows = Counter()
+        with (output/filename).open(newline="") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if None in row or None in row.values() or float(row["iteration"]) != iteration:
+                    raise ValueError(f"Wrong iteration or incomplete record in {filename}.")
+                rows[row.get("wall", "cells")] += 1
+                if any(not math.isfinite(float(value)) for field, value in row.items() if field!="wall"):
+                    raise ValueError(f"Nonfinite field in {filename}.")
+        if rows != counts:
+            raise ValueError(f"Incomplete {filename}: expected {dict(counts)}, found {dict(rows)}.")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--case", type=Path, required=True)
     parser.add_argument("--ranks", type=int, default=1)
     parser.add_argument("--exit-code", type=int, default=0)
+    parser.add_argument("--solve-seconds", type=float, help="wall time of this new solver invocation")
     parser.add_argument("--phase", default="finished")
     parser.add_argument("--interrupted", action="store_true")
     parser.add_argument("--checkpoint", action="store_true")
@@ -202,21 +232,37 @@ def main():
                 t = float(marker["time"])
                 stationary = marker.get("status") == "stationary" and math.isfinite(t) \
                     and math.isclose(t, info["time"], rel_tol=1e-8, abs_tol=1e-10) \
-                    and math.isclose(t, latest_row["time"], rel_tol=1e-8, abs_tol=1e-10)
+                    and math.isclose(t, latest_row["iteration"], rel_tol=1e-8, abs_tol=1e-10)
                 if not stationary:
                     warnings.append("Stationarity marker does not match the latest saved fields and metric row.")
             except (ValueError, TypeError, KeyError):
                 errors.append("Stationarity marker is missing a finite time.")
+        if stationary:
+            try:
+                check_profiles(case, info["time"])
+            except (ValueError, OSError, KeyError) as exc:
+                errors.append(str(exc))
         status = "interrupted" if args.interrupted else "failed" if args.exit_code or errors else "stationary" if stationary else "unconverged"
         payload = {"status": status, "solver_exit_code": args.exit_code, "phase": args.phase,
                    "checked_at_utc": datetime.now(timezone.utc).isoformat(), "case": str(case),
                    "checkpoint": info, "latest_metrics": latest_row,
                    "stationarity_marker": marker, "errors": errors, "warnings": warnings}
-        atomic_json(case / "run_status.json", payload)
+        status_path = case / "run_status.json"
+        timings = []
+        if status_path.exists():
+            try:
+                timings = json.loads(status_path.read_text()).get("solve_attempt_seconds", [])
+            except (OSError, ValueError):
+                warnings.append("Prior run-status timings could not be read.")
+        if args.solve_seconds is not None:
+            timings.append(args.solve_seconds)
+        payload.update(solve_attempt_seconds=timings, measured_solve_seconds=sum(timings) if timings else None,
+                       converged_iteration=int(info["time"]) if status=="stationary" else None)
+        atomic_json(status_path, payload)
         print(json.dumps(payload, indent=2, allow_nan=False))
         if status == "unconverged":
-            print("Solver completed, but stationarity was NOT established. Inspect histories or resume with a later end time.", file=sys.stderr)
-        return 2 if status == "failed" else 0
+            print("Solver completed, but stationarity was NOT established. Inspect histories or resume with a larger iteration budget.", file=sys.stderr)
+        return 0 if status == "stationary" else 75 if status == "interrupted" else 3 if status == "unconverged" else 2
     except (OSError, ValueError, KeyError) as exc:
         print(f"Run check failed: {exc}", file=sys.stderr)
         return 2

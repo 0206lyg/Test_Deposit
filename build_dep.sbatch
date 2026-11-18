@@ -41,4 +41,4 @@ if [[ "${DEP_BUILD_PLOTS:-1}" == 1 ]]; then
 fi
 "$DEP_PYTHON" tools/record_build.py
 echo 'BUILD COMPLETE: rheoDepositionFoam is ready in the project install directory.'
-echo 'Next: sbatch run_dep.sbatch gly75 0.5 coarse'
+echo 'Next: bash submit_comparison.sh 0.5 coarse'

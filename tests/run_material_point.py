@@ -17,7 +17,7 @@ def header(kind, name):
     return f"FoamFile {{version 2.0; format ascii; class {kind}; object {name};}}\n"
 
 
-def fixture(path, modes, gamma, dt, duration, inner, rotation=None):
+def fixture(path, modes, gamma, dt, duration, inner, rotation=None, scheme="Euler"):
     for d in ("0", "constant", "system"):
         (path / d).mkdir(parents=True, exist_ok=True)
     (path / "system/blockMeshDict").write_text(header("dictionary", "blockMeshDict") + """convertToMeters 1;
@@ -36,7 +36,7 @@ runTimeModifiable false; shearRate {gamma:.17g}; innerCorrections {inner};
     if rotation is not None:
         with (path / "system/controlDict").open("a") as f:
             f.write("rotation (" + " ".join(f"{v:.17g}" for row in rotation for v in row) + ");\n")
-    (path / "system/fvSchemes").write_text(header("dictionary", "fvSchemes") + """ddtSchemes {default Euler;}
+    (path / "system/fvSchemes").write_text(header("dictionary", "fvSchemes") + f"ddtSchemes {{default {scheme};}}\n" + """
 gradSchemes {default Gauss linear;}
 divSchemes {default Gauss upwind;}
 laplacianSchemes {default Gauss linear corrected;}
@@ -116,11 +116,15 @@ def main():
     rotation = [[-2/3,2/15,11/15],[2/3,-1/3,2/3],[1/3,14/15,2/15]]
     candidates = {"selected_peo": (baseline, identity),
         "strong_nonlinearity_regression": ([(.13588580220713073, .04, .5323201163935225), (.05716419779286927, .002, .6802672592220357)], identity),
-        "selected_peo_rotated_3d": (baseline, rotation)}
+        "selected_peo_rotated_3d": (baseline, rotation),
+        "selected_peo_steady": (baseline, identity)}
     results = {}
     for name, (modes, rotation) in candidates.items():
         case = work / name
-        fixture(case, modes, args.gamma, args.dt, args.duration, args.inner, rotation)
+        steady = name == "selected_peo_steady"
+        scheme = "steadyState" if steady else "Euler"
+        dt, end, inner = (1, 5000, 1) if steady else (args.dt, args.duration, args.inner)
+        fixture(case, modes, args.gamma, dt, end, inner, rotation, scheme)
         with (case / "log.blockMesh").open("w") as log:
             subprocess.run(["blockMesh", "-case", str(case)], stdout=log, stderr=subprocess.STDOUT, check=True)
         proc = subprocess.Popen([str(executable), "-case", str(case)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
@@ -148,7 +152,7 @@ def main():
         scale=max(abs(v) for v in expected_tensor)
         tensor_errors=[abs(a-b)/max(abs(b),1e-8*scale,1e-30) for a,b in zip(full_tensor,expected_tensor)]
         passed = all(math.isfinite(e) and e <= args.relative_tolerance for e in errors+tensor_errors)
-        results[name] = {"passed": passed, "gamma_s-1": args.gamma, "time_s": final[0], "polymer_shear_Pa": final[1], "N1_Pa": final[2], "analytical_polymer_shear_Pa": expected[0], "analytical_N1_Pa": expected[1], "relative_errors": errors, "modes_eta_lambda_epsilon": modes}
+        results[name] = {"passed": passed, "gamma_s-1": args.gamma, ("iteration" if steady else "time_s"): final[0], "ddt_scheme": scheme, "polymer_shear_Pa": final[1], "N1_Pa": final[2], "analytical_polymer_shear_Pa": expected[0], "analytical_N1_Pa": expected[1], "relative_errors": errors, "modes_eta_lambda_epsilon": modes}
         results[name].update({"rotation":rotation,"algebra_checks_passed":algebra_passed,
             "stress_components_order":["xx","xy","xz","yy","yz","zz"],
             "stress_components_Pa":full_tensor,"analytical_stress_components_Pa":expected_tensor,

@@ -10,8 +10,6 @@ import tempfile
 ROOT=Path(__file__).resolve().parents[1]
 
 def main():
-    config=json.loads((ROOT/'config/experiment.json').read_text())
-    peo=config['fluids']['peo']
     # Inspect generated dictionaries, not an independent copy of coefficients.
     with tempfile.TemporaryDirectory(prefix='deposition_verify_') as temp:
         case=Path(temp)/'peo'
@@ -21,6 +19,15 @@ def main():
         metadata=json.loads((case/'metadata.json').read_text())
         assert math.isclose(metadata['flow_rate_m3_s'],.5e-6/3600,rel_tol=1e-14)
         assert math.isclose(metadata['rho_kg_m3'],998,rel_tol=1e-14)
+        geom=metadata['geometry_m']
+        assert math.isclose(geom['upstream_width']/geom['downstream_width'], 4)
+        assert geom['upstream_length'] == geom['downstream_length'] == 900e-6
+        assert math.isclose(metadata['q_half_per_depth_m2_s'],
+                            metadata['flow_rate_m3_s']/(2*geom['height']))
+        assert 'default steadyState;' in (case/'system/fvSchemes').read_text()
+        velocity=(case/'0/U').read_text()
+        assert 'type empty;' in velocity and 'type symmetryPlane;' in velocity
+        assert 'type fixedGradient;' in velocity
         text=(case/'constant/constitutiveProperties').read_text()
         assert text.count('type PTTLog;')==2 or text.count('PTTLog')==2
         assert text.count('exponential')==2
@@ -36,6 +43,6 @@ def main():
         subprocess.run(['bash','-n',str(script)],check=True)
     assert (ROOT/'vendor/rheoTool/LICENSE').is_file()
     assert (ROOT/'deps/eigen-3.4.0/Eigen/Core').is_file()
-    print('PASS: case generation, flow units, stress/pressure dimensions, ePTT modes, non-overwrite protection and shell syntax.')
+    print('PASS: planar half geometry, flow per depth, steady schemes, velocity boundaries, ePTT modes, units, non-overwrite protection and shell syntax.')
 
 if __name__=='__main__': main()

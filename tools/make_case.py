@@ -1,24 +1,21 @@
 #!/usr/bin/env python3
-"""Generate an independent full-3D OpenFOAM/rheoDepositionFoam case.
-
-All dimensional inputs and emitted fields use SI units. The full experimental
-channel lengths are retained. The mesh is conformal, orthogonal, and contains
-12 hex blocks. No particle model or deposition boundary condition is introduced.
-Existing case directories are never overwritten.
-"""
+"""Generate the paper's 2D half-channel steady creeping-flow case in SI units."""
 from __future__ import annotations
 
 import argparse
 from collections import defaultdict
 import json
+import math
+from planar_inlet import initialize
 from pathlib import Path
 import sys
 
 
-PATCHES = (
-    "inlet", "outlet", "wallsUpstream", "wallsContraction", "wallsDownstream",
-    "bottomUpstream", "topUpstream", "bottomDownstream", "topDownstream",
-)
+PATCHES = {
+    "inlet": "patch", "outlet": "patch", "wallsUpstream": "wall",
+    "wallsContraction": "wall", "wallsDownstream": "wall",
+    "centreline": "symmetryPlane", "frontAndBack": "empty",
+}
 
 
 def header(obj: str, cls: str = "dictionary", location: str | None = None) -> str:
@@ -36,14 +33,19 @@ def number(v: float) -> str:
 
 def graded_mesh(g: dict, m: dict) -> tuple[str, dict]:
     """Build shared vertices and infer every exterior face by connectivity."""
-    wu, wd, h = g["upstream_width"], g["downstream_width"], g["height"]
+    wu, wd, h = g["upstream_width"], g["downstream_width"], g["mesh_depth"]
     lu, ld = g["upstream_length"], g["downstream_length"]
     # Distances are geometry-based, not tied to a cell count.
-    near, middle = 4 * wd, 20 * wd
+    near, middle = wd, 5 * wd
     if min(lu, ld) <= middle:
-        raise ValueError("Physical channel lengths must exceed 20 downstream widths")
-    xs = [-lu, -middle, -near, 0.0, near, middle, ld]
-    ys = [-wu / 2, -wd / 2, wd / 2, wu / 2]
+        raise ValueError("Physical channel lengths must exceed five downstream widths")
+    # Resolve the developing traction-free outlet with an additional graded
+    # block. Holding dx coarse at the last outlet face corrupts its gradients.
+    outlet_start = ld - 3*wd
+    if outlet_start <= middle:
+        raise ValueError("Downstream channel must extend beyond the outlet grading block")
+    xs = [-lu, -middle, -near, 0.0, near, middle, outlet_start, ld]
+    ys = [0., wd / 2, wu / 2]
     vertices: list[tuple[float, float, float]] = []
     vertex_ids: dict[tuple[float, float, float], int] = {}
 
@@ -54,34 +56,30 @@ def graded_mesh(g: dict, m: dict) -> tuple[str, dict]:
             vertices.append(key)
         return vertex_ids[key]
 
-    nxs = [m[k] for k in (
-        "nx_up_far", "nx_up_mid", "nx_up_near", "nx_down_near",
-        "nx_down_mid", "nx_down_far",
-    )]
-    # Limit far-duct aspect ratios without modifying the refined throat region.
-    gx = [.2, .2, .25, 4., 5., 5.]
+    upstream = [m["nx_far"], m["nx_mid"], m["nx_near"]]
+    nxs = upstream + upstream[::-1] + [m["nx_outlet"]]
+    gx = [0.33, 0.20, 0.25, 4., 5., 1., 0.04]
     blocks = []
     faces: dict[tuple[int, ...], list[tuple[int, ...]]] = defaultdict(list)
     total_cells = 0
     # These face orderings point outward from a right-handed hex.
     local_faces = ((0, 4, 7, 3), (1, 2, 6, 5), (0, 1, 5, 4),
                    (3, 7, 6, 2), (0, 3, 2, 1), (4, 5, 6, 7))
-    for ix in range(6):
-        for iy in (range(3) if ix < 3 else [1]):
+    for ix in range(len(nxs)):
+        for iy in (range(2) if ix < 3 else [0]):
             x0, x1, y0, y1 = xs[ix], xs[ix + 1], ys[iy], ys[iy + 1]
             ids = tuple(vid(x, y, z) for x, y, z in (
                 (x0, y0, -h/2), (x1, y0, -h/2), (x1, y1, -h/2), (x0, y1, -h/2),
                 (x0, y0, h/2), (x1, y0, h/2), (x1, y1, h/2), (x0, y1, h/2),
             ))
-            ny = m["ny_core"] if iy == 1 else m["ny_wing"]
-            cells = (nxs[ix], ny, m["nz"])
-            total_cells += cells[0] * cells[1] * cells[2]
-            # Symmetric wall refinement in y/z; all matching block interfaces
-            # have identical face cell counts and edge distributions.
-            yz_grade = "((0.5 0.5 8) (0.5 0.5 0.125))"
+            ny = m["ny_core"] if iy == 0 else m["ny_wing"]
+            total_cells += nxs[ix] * ny
+            # Core grades toward the throat wall. In the outer upstream band
+            # resolve both the throat lip and the outer no-slip wall.
+            gy = "0.4" if iy == 0 else "((0.5 0.5 4) (0.5 0.5 0.25))"
             blocks.append(
-                f"    hex ({' '.join(map(str, ids))}) ({' '.join(map(str, cells))}) "
-                f"simpleGrading ({number(gx[ix])} {yz_grade} {yz_grade})"
+                f"    hex ({' '.join(map(str, ids))}) ({nxs[ix]} {ny} 1) "
+                f"simpleGrading ({number(gx[ix])} {gy} 1)"
             )
             for f in local_faces:
                 face = tuple(ids[j] for j in f)
@@ -106,7 +104,9 @@ def graded_mesh(g: dict, m: dict) -> tuple[str, dict]:
         elif const[0] and abs(x) < tol and abs(y) > wd/2:
             patch = "wallsContraction"
         elif const[2]:
-            patch = ("top" if z > 0 else "bottom") + ("Upstream" if x < 0 else "Downstream")
+            patch = "frontAndBack"
+        elif const[1] and abs(y) < tol:
+            patch = "centreline"
         elif const[1]:
             patch = "wallsUpstream" if x < 0 else "wallsDownstream"
         else:
@@ -118,21 +118,22 @@ def graded_mesh(g: dict, m: dict) -> tuple[str, dict]:
     text += "\n".join("    (" + " ".join(number(x) for x in v) + ")" for v in vertices)
     text += "\n);\n\nblocks\n(\n" + "\n".join(blocks) + "\n);\n\nedges ();\n\nboundary\n(\n"
     for name, ff in patch_faces.items():
-        kind = "patch" if name in ("inlet", "outlet") else "wall"
+        kind = PATCHES[name]
         text += f"    {name}\n    {{\n        type {kind};\n        faces\n        (\n"
         text += "\n".join("            (" + " ".join(map(str, f)) + ")" for f in ff)
         text += "\n        );\n    }\n"
     text += ");\n\nmergePatchPairs ();\n"
     return text, {"estimated_cells": total_cells, "block_count": len(blocks),
                   "vertex_count": len(vertices), "patches": list(PATCHES),
-                  "x_block_edges_m": xs, "cell_counts": m,
-                  "near_wall_grading_end_to_start_half_block": 8.0}
+                  "x_block_edges_m": xs, "cell_counts": m}
 
 
 def field(name: str, cls: str, dims: str, internal: str, inlet: str, outlet: str, wall: str) -> str:
     text = header(name, cls, "0") + f"dimensions {dims};\ninternalField uniform {internal};\n\nboundaryField\n{{\n"
     for patch in PATCHES:
         spec = inlet if patch == "inlet" else outlet if patch == "outlet" else wall
+        if PATCHES[patch] in ("empty", "symmetryPlane"):
+            spec = f"type {PATCHES[patch]};"
         text += f"    {patch}\n    {{\n        {spec}\n    }}\n"
     return text + "}\n"
 
@@ -168,6 +169,7 @@ def constitutive(fluid: dict) -> str:
             zeta zeta [0 0 0 0 0 0 0] 0;
             destructionFunctionType exponential;
             stabilization coupling;
+            depositionDiagnostics false;
             thermoLambda {{ type Constant; }}
             thermoEta {{ type Constant; }}
         }}
@@ -178,12 +180,12 @@ def constitutive(fluid: dict) -> str:
 
 
 def fv_schemes(fluid: dict, stress_scheme: str) -> str:
-    div = ["    default none;", "    div(phi,U) Gauss linearUpwind grad(U);",
+    div = ["    default none;",
            "    div(tau) Gauss linear;", "    div(grad(U)) Gauss linear;"]
     for mode in fluid.get("modes", []):
         for base in ("theta", "tau"):
             div.append(f"    div(phi,{base}{mode['name']}) Gauss {stress_scheme};")
-    return header("fvSchemes") + """ddtSchemes { default Euler; }
+    return header("fvSchemes") + """ddtSchemes { default steadyState; }
 gradSchemes
 {
     default Gauss linear;
@@ -202,7 +204,7 @@ fluxRequired { default no; p; }
 """
 
 
-def fv_solution(inner: int) -> str:
+def fv_solution(pressure=0.3, velocity=0.7, theta=0.7) -> str:
     return header("fvSolution") + f"""solvers
 {{
     p
@@ -228,8 +230,8 @@ def fv_solution(inner: int) -> str:
     pFinal {{ $p; relTol 0; }}
     U
     {{
-        solver PBiCGStab;
-        preconditioner DILU;
+        solver PCG;
+        preconditioner DIC;
         tolerance 1e-10;
         relTol 0.01;
         maxIter 1000;
@@ -246,199 +248,186 @@ def fv_solution(inner: int) -> str:
 }}
 SIMPLE
 {{
-    nInIter {inner};
+    consistent no;
     nNonOrthogonalCorrectors 0;
     pRefCell 0;
     pRefValue 0;
-    residualControl {{ }}
 }}
 relaxationFactors
 {{
-    fields {{ p 0.3; }}
-    equations {{ U 0.7; "theta.*" 0.7; "tau.*" 0.7; }}
+    fields {{ p {pressure}; }}
+    equations {{ U {velocity}; "theta.*" {theta}; "tau.*" {theta}; }}
 }}
 """
 
 
-def controls(args: argparse.Namespace) -> str:
-    text = header("controlDict") + f"""application rheoDepositionFoam;
+def controls(args) -> str:
+    return header("controlDict") + f"""application rheoDepositionFoam;
 startFrom latestTime;
 startTime 0;
 stopAt endTime;
-endTime {number(args.end_time)};
-deltaT {number(args.delta_t)};
-adjustTimeStep yes;
-maxCo {number(args.max_co)};
-maxDeltaT {number(args.max_delta_t)};
-writeControl adjustableRunTime;
-writeInterval {number(args.write_interval)};
-purgeWrite {args.purge_write};
+endTime {args.max_iterations};
+deltaT 1;
+adjustTimeStep no;
+writeControl timeStep;
+writeInterval {args.write_interval};
+purgeWrite 2;
 writeFormat ascii;
-writePrecision 12;
+writePrecision 14;
 writeCompression off;
 timeFormat general;
 timePrecision 12;
-runTimeModifiable yes;
-functions
-{{
+runTimeModifiable true;
 """
-    for label, patch in (("inletFlux", "inlet"), ("outletFlux", "outlet")):
-        text += f"""    {label}
-    {{
-        type surfaceFieldValue;
-        libs ("libfieldFunctionObjects.so");
-        writeControl timeStep;
-        writeInterval 50;
-        log true;
-        writeFields false;
-        regionType patch;
-        name {patch};
-        operation sum;
-        fields (phi);
-    }}
-"""
-    text += """    inletMeanKinematicPressure
-    {
-        type surfaceFieldValue;
-        libs ("libfieldFunctionObjects.so");
-        writeControl timeStep;
-        writeInterval 50;
-        log true;
-        writeFields false;
-        regionType patch;
-        name inlet;
-        operation areaAverage;
-        fields (p);
+
+
+def properties(g, fluid, q_half, args):
+    values = {
+        "model": args.fluid,
+        "upstreamHalfWidth": g["upstream_width"]/2,
+        "downstreamHalfWidth": g["downstream_width"]/2,
+        "upstreamLength": g["upstream_length"],
+        "downstreamLength": g["downstream_length"],
+        "meshDepth": g["mesh_depth"],
+        "qHalfPerDepth": q_half,
+        "approachOffset": args.approach_offset_um*1e-6,
+        "edgeExclusion": args.edge_exclusion_um*1e-6,
+        "relativeTolerance": args.relative_tolerance,
+        "massTolerance": args.mass_tolerance,
+        "residualTolerance": args.residual_tolerance,
+        "monitorEvery": args.monitor_interval,
+        "stableChecks": args.stable_checks,
+        "outletRelaxation": args.outlet_relaxation,
+        "outletSolventViscosity": (fluid.get("eta_s_Pa_s") or fluid.get("eta_Pa_s")
+                                   or fluid.get("eta_inf_Pa_s")),
     }
-}
-"""
-    return text
+    if args.fluid == "cross":
+        for name, key in (("crossEta0", "eta_zero_Pa_s"), ("crossEtaInf", "eta_inf_Pa_s"),
+                          ("crossK", "k_s"), ("crossA", "a")):
+            values[name] = fluid[key]
+    return header("depositionProperties", location="constant") + "".join(
+        f"{k} {v if isinstance(v, str) else number(v)};\n" for k,v in values.items()
+    )
 
 
-def deposition_properties(g: dict, args: argparse.Namespace) -> str:
-    return header("depositionProperties", location="constant") + f"""// All lengths and times in SI units; offsets stay fixed across mesh levels.
-upstreamHalfWidth {number(g['upstream_width']/2)};
-downstreamHalfWidth {number(g['downstream_width']/2)};
-halfHeight {number(g['height']/2)};
-approachOffset {number(args.approach_offset_um*1e-6)};
-edgeExclusion {number(args.edge_exclusion_um*1e-6)};
-roiHalfLength {number(4*g['downstream_width'])};
-sampleNy 24;
-sampleNz 32;
-minimumSteadyTime {number(args.minimum_steady_time)};
-steadyWindow {number(args.steady_window)};
-relativeTolerance 1e-4;
-massTolerance 1e-5;
-monitorInterval 0.01;
-stopWhenStationary true;
-"""
+def inflow(name):
+    # Mandatory until the mesh has been built; no silent fallback to a plug or
+    # relaxed reservoir. The actual face order comes from constant/polyMesh.
+    return f'type fixedValue;\n        #include "../constant/inlet_{name}"'
 
 
-def main() -> int:
+def main():
+    if sys.argv[1:2] == ["--initialize-inlet"]:
+        init_parser = argparse.ArgumentParser(description="Prepare inflow for an existing serial blockMesh case")
+        init_parser.add_argument("--initialize-inlet", required=True, type=Path, metavar="CASE")
+        initialize(init_parser.parse_args().initialize_inlet)
+        return 0
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--fluid", choices=("gly75", "peo", "cross"), required=True,
-                        help="gly75/peo are experimental media; cross is an optional elasticity-free PEO control")
-    parser.add_argument("--flow", type=float, choices=(0.3, 0.5, 0.7), required=True,
-                        help="Volumetric flow rate in mL/h")
+    parser.add_argument("--fluid", choices=("gly75", "cross", "peo"), required=True)
+    parser.add_argument("--flow", required=True, type=float, help="Positive experimental flow (mL/h), including continuation stages")
     parser.add_argument("--mesh", choices=("smoke", "coarse", "medium", "fine"), default="coarse")
     parser.add_argument("--case", type=Path, required=True)
     parser.add_argument("--config", type=Path, default=Path(__file__).resolve().parents[1]/"config"/"experiment.json")
-    parser.add_argument("--ranks", type=int, default=16)
-    parser.add_argument("--end-time", type=float, default=4.0, help="Time cap in seconds; reaching it alone does not establish stationarity")
-    parser.add_argument("--delta-t", type=float, default=1e-6)
-    parser.add_argument("--max-delta-t", type=float, default=5e-5)
-    parser.add_argument("--max-co", type=float, default=.25)
-    parser.add_argument("--write-interval", type=float, default=.1)
-    parser.add_argument("--purge-write", type=int, default=3)
-    parser.add_argument("--inner-iters", type=int, default=3)
-    parser.add_argument("--stress-scheme", choices=("limitedLinear", "upwind"), default="limitedLinear")
-    parser.add_argument("--approach-offset-um", type=float, default=2.0)
-    parser.add_argument("--edge-exclusion-um", type=float, default=2.0)
-    parser.add_argument("--minimum-steady-time", type=float, default=.4)
-    parser.add_argument("--steady-window", type=float, default=.2)
+    parser.add_argument("--ranks", type=int, default=1)
+    parser.add_argument("--max-iterations", "--max-iters", type=int, default=12000)
+    parser.add_argument("--write-interval", type=int, default=200)
+    parser.add_argument("--monitor-interval", type=int, default=10)
+    parser.add_argument("--stable-checks", type=int, default=3)
+    parser.add_argument("--relative-tolerance", type=float, default=1e-3)
+    parser.add_argument("--residual-tolerance", type=float, default=1e-5)
+    parser.add_argument("--mass-tolerance", type=float, default=1e-5)
+    parser.add_argument("--stress-scheme", choices=("limitedLinear", "upwind"), default="upwind")
+    parser.add_argument("--pressure-relaxation", type=float)
+    parser.add_argument("--velocity-relaxation", type=float)
+    parser.add_argument("--theta-relaxation", type=float)
+    parser.add_argument("--outlet-relaxation", type=float, default=0.3)
+    parser.add_argument("--approach-offset-um", type=float, default=2.)
+    parser.add_argument("--edge-exclusion-um", type=float, default=2.)
     args = parser.parse_args()
-    if args.ranks < 1 or args.inner_iters < 1 or args.purge_write < 0:
-        parser.error("ranks/inner-iters must be positive; purge-write must be nonnegative")
-    if min(args.end_time, args.delta_t, args.max_delta_t, args.max_co, args.write_interval) <= 0:
-        parser.error("time and Courant parameters must be positive")
-    if args.delta_t > args.max_delta_t:
-        parser.error("delta-t must not exceed max-delta-t")
-    if args.approach_offset_um <= 0 or args.edge_exclusion_um < 0:
-        parser.error("approach-offset-um must be positive; edge-exclusion-um must be nonnegative")
-    if args.minimum_steady_time < 0 or args.steady_window <= 0:
-        parser.error("minimum-steady-time must be nonnegative; steady-window must be positive")
+    if min(args.ranks, args.max_iterations, args.write_interval, args.monitor_interval, args.stable_checks) < 1:
+        parser.error("iteration counts, rank count, and intervals must be positive")
+    for v in (args.flow, args.approach_offset_um, args.relative_tolerance, args.residual_tolerance, args.mass_tolerance):
+        if not math.isfinite(v) or v <= 0:
+            parser.error("flow, offset and tolerances must be finite and positive")
+    if not math.isfinite(args.edge_exclusion_um) or args.edge_exclusion_um < 0:
+        parser.error("edge exclusion must be finite and nonnegative")
+    elastic = args.fluid == "peo"
+    for key, default in (("pressure_relaxation", 0.2 if elastic else 0.3),
+                         ("velocity_relaxation", 0.4 if elastic else 0.7),
+                         ("theta_relaxation", 0.15 if elastic else 0.7),
+                         ("outlet_relaxation", 0.3)):
+        value = getattr(args, key)
+        if value is None:
+            setattr(args, key, default)
+        elif not 0 < value <= 1:
+            parser.error(f"{key} must be in (0,1]")
     target = args.case.expanduser().resolve()
     if target.exists():
-        parser.error(f"Case already exists; refusing to overwrite: {target}")
+        parser.error(f"Case already exists: {target}")
     config = json.loads(args.config.read_text())
     g, fluid = config["geometry_m"], config["fluids"][args.fluid]
-    block_text, mesh_info = graded_mesh(g, config["mesh_levels"][args.mesh])
-    q = args.flow * 1e-6 / 3600.0
-    ui = q / (g["upstream_width"] * g["height"])
-    uo = q / (g["downstream_width"] * g["height"])
-    rho = fluid["rho_kg_m3"]
-    stress_scheme = "limitedLinear 1" if args.stress_scheme == "limitedLinear" else "upwind"
+    mesh_text, mesh = graded_mesh(g, config["mesh_levels"][args.mesh])
+    if args.ranks > mesh["estimated_cells"]:
+        parser.error("ranks exceed cell count")
+    if args.fluid == "peo" and (fluid["zeta"] != 0 or fluid["destruction_function"] != "exponential" or len(fluid["modes"]) != 2):
+        parser.error("PEO setup requires two affine exponential PTT modes (zeta=0)")
+    q = args.flow*1e-6/3600.
+    q_half = q/(2*g["height"])
+    ui = 2*q_half/g["upstream_width"]
+    scheme = "upwind" if args.stress_scheme == "upwind" else "limitedLinear 1"
+    # The outlet pressure and velocity gradient are updated together by the
+    # solver from the normal/tangential components of the total stress.
     files = {
-        "system/blockMeshDict": block_text,
-        "system/fvSchemes": fv_schemes(fluid, stress_scheme),
-        "system/fvSolution": fv_solution(args.inner_iters),
+        "system/blockMeshDict": mesh_text,
+        "system/fvSchemes": fv_schemes(fluid, scheme),
+        "system/fvSolution": fv_solution(args.pressure_relaxation, args.velocity_relaxation, args.theta_relaxation),
         "system/controlDict": controls(args),
         "system/decomposeParDict": header("decomposeParDict") + f"numberOfSubdomains {args.ranks};\nmethod scotch;\n",
         "constant/constitutiveProperties": constitutive(fluid),
-        "constant/dynamicMeshDict": header("dynamicMeshDict") + "dynamicFvMesh staticFvMesh;\n",
-        "constant/depositionProperties": deposition_properties(g, args),
-        "0/U": field("U", "volVectorField", "[0 1 -1 0 0 0 0]", "(0 0 0)",
-                     f"type flowRateInletVelocity;\n        volumetricFlowRate constant {number(q)};\n        value uniform ({number(ui)} 0 0);",
-                     "type zeroGradient;", "type fixedValue;\n        value uniform (0 0 0);"),
-        "0/p": field("p", "volScalarField", "[0 2 -2 0 0 0 0]", "0",
-                     "type zeroGradient;", "type fixedValue;\n        value uniform 0;", "type zeroGradient;"),
+        "constant/depositionProperties": properties(g, fluid, q_half, args),
+        "0/U": field("U", "volVectorField", "[0 1 -1 0 0 0 0]", "(0 0 0)", inflow("U"),
+                     "type fixedGradient;\n        gradient uniform (0 0 0);",
+                     "type fixedValue;\n        value uniform (0 0 0);"),
+        "0/p": field("p", "volScalarField", "[0 2 -2 0 0 0 0]", "0", "type zeroGradient;",
+                     "type fixedValue;\n        value uniform 0;", "type zeroGradient;"),
     }
-    zero = "(0 0 0 0 0 0)"
     for mode in fluid.get("modes", []):
-        for base, dim in (("tau", "[1 -1 -2 0 0 0 0]"), ("theta", "[0 0 0 0 0 0 0]")):
-            name = base + mode["name"]
-            files["0/" + name] = field(name, "volSymmTensorField", dim, zero,
-                                      "type fixedValue;\n        value uniform " + zero + ";",
-                                      "type zeroGradient;", "type zeroGradient;")
+        for name, dims, cls, initial in (
+            ("tau", "[1 -1 -2 0 0 0 0]", "volSymmTensorField", "(0 0 0 0 0 0)"),
+            ("theta", "[0 0 0 0 0 0 0]", "volSymmTensorField", "(0 0 0 0 0 0)"),
+            ("eigVals", "[0 0 0 0 0 0 0]", "volTensorField", "(1 0 0 0 1 0 0 0 1)"),
+            ("eigVecs", "[0 0 0 0 0 0 0]", "volTensorField", "(1 0 0 0 1 0 0 0 1)"),
+        ):
+            obj = name+mode["name"]
+            files["0/"+obj] = field(obj, cls, dims, initial, inflow(obj), "type zeroGradient;", "type zeroGradient;")
     metadata = {
-        "schema_version": 1, "generator": "tools/make_case.py", "application": "rheoDepositionFoam",
-        "fluid_key": args.fluid, "fluid": fluid, "Q_mL_h": args.flow,
-        "flow_rate_m3_s": q, "rho_kg_m3": rho, "geometry_m": g,
-        "inlet_mean_velocity_m_s": ui, "outlet_mean_velocity_m_s": uo,
-        "mesh_level": args.mesh, "mesh": mesh_info, "ranks": args.ranks,
-        "numerics": {"ddt": "Euler", "stress_advection": stress_scheme,
-                     "pressure_solver": "PCG with GAMG preconditioner; DICGaussSeidel smoothing and direct coarsest solve",
-                     "end_time_s": args.end_time, "maxCo": args.max_co,
-                     "initial_dt_s": args.delta_t, "max_dt_s": args.max_delta_t,
-                     "inner_iterations": args.inner_iters, "write_interval_s": args.write_interval,
-                     "purge_write": args.purge_write},
+        "schema_version": 2, "application": "rheoDepositionFoam", "fluid_key": args.fluid,
+        "fluid": fluid, "rho_kg_m3": fluid["rho_kg_m3"], "Q_mL_h": args.flow,
+        "flow_rate_m3_s": q, "q_half_per_depth_m2_s": q_half,
+        "inlet_flux_mesh_m3_s": q_half*g["mesh_depth"],
+        "geometry_m": g, "mesh_level": args.mesh, "mesh": mesh, "ranks": args.ranks,
+        "inlet_mean_velocity_m_s": ui, "outlet_mean_velocity_m_s": 2*q_half/g["downstream_width"],
+        "numerics": {"ddt": "steadyState", "creeping_flow": True, "stress_advection": scheme,
+                     "max_iterations": args.max_iterations, "write_interval_iterations": args.write_interval,
+                     "relaxation": {"p": args.pressure_relaxation, "U": args.velocity_relaxation,
+                                    "theta": args.theta_relaxation, "outlet": args.outlet_relaxation}},
         "diagnostics": {"approach_offset_m": args.approach_offset_um*1e-6,
                         "edge_exclusion_m": args.edge_exclusion_um*1e-6,
-                        "roi_half_length_m": 4*g['downstream_width'],
-                        "sampleNy": 24, "sampleNz": 32,
-                        "minimum_steady_time_s": args.minimum_steady_time,
-                        "steady_window_s": args.steady_window,
-                        "relative_tolerance": 1e-4, "mass_tolerance": 1e-5,
-                        "stop_when_stationary": True},
-        "field_units": {"U": "m/s", "p": "m2/s2 (kinematic pressure); multiply by rho for Pa",
-                        "phi": "m3/s, negative at inlet", "tau": "Pa, summed polymer stress only",
-                        "tau_mode1": "Pa", "tau_mode2": "Pa", "theta_mode1": "dimensionless log conformation", "theta_mode2": "dimensionless log conformation"},
-        "inlet_stress": "Relaxed reservoir (theta=0, tau=0) at x=-10mm; retain long upstream channel to develop velocity and stress. Do not replace the actual developed field by a uniform pre-shear stress.",
+                        "relative_tolerance": args.relative_tolerance, "mass_tolerance": args.mass_tolerance,
+                        "residual_tolerance": args.residual_tolerance, "monitor_every": args.monitor_interval,
+                        "stable_checks": args.stable_checks},
         "analysis_defaults": config["analysis_defaults"],
-        "stationarity_note": "The time cap and linear residuals alone are not a steady-state acceptance criterion. Check mass balance and time variation of pressure, velocity, total wall traction and approach flux; physical elastic unsteadiness must be reported if present.",
-        "mesh_note": "smoke is a plumbing test only. Compare coarse/medium/fine at identical physical offsets and wall regions. All nine boundary patches are physical 3D patches; none is empty or a symmetry plane.",
+        "inlet": "Parabolic face averages and corresponding local steady homogeneous-shear log-conformation and stress",
+        "outlet": "Full zero total traction; pressure and velocity boundary gradient are iterated in the solver",
     }
     files["metadata.json"] = json.dumps(metadata, indent=2) + "\n"
     files["case.foam"] = ""
-    # All validation and text construction precede mutation. Never reuse a case.
     target.mkdir(parents=True, exist_ok=False)
-    for relative, content in files.items():
-        path = target / relative
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content)
-    print(json.dumps({"case": str(target), "fluid": args.fluid, "Q_mL_h": args.flow,
-                      "estimated_cells": mesh_info["estimated_cells"], "ranks": args.ranks,
-                      "inlet_mean_velocity_m_s": ui, "end_time_s": args.end_time}, indent=2))
+    for relative, contents in files.items():
+        path = target/relative
+        path.parent.mkdir(exist_ok=True, parents=True)
+        path.write_text(contents)
+    print(f"{target}: {args.fluid} {args.flow:g} mL/h, {mesh['estimated_cells']} cells, Q/(2h)={q_half:.12g} m2/s")
     return 0
 
 

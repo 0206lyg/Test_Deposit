@@ -1,99 +1,95 @@
-// Diagnostics are project-local. All stresses below are in Pa.
 IOdictionary depDict
 (
-    IOobject("depositionProperties", runTime.constant(), mesh,
-             IOobject::MUST_READ, IOobject::NO_WRITE)
+    IOobject("depositionProperties", runTime.constant(), mesh, IOobject::MUST_READ, IOobject::NO_WRITE)
 );
-const scalar depHalfUp = depDict.lookupOrDefault<scalar>("upstreamHalfWidth", 90e-6);
-const scalar depHalfDown = depDict.lookupOrDefault<scalar>("downstreamHalfWidth", 22.5e-6);
-const scalar depHalfHeight = depDict.lookupOrDefault<scalar>("halfHeight", 50e-6);
-const scalar depOffset = depDict.lookupOrDefault<scalar>("approachOffset", 2e-6);
-const scalar depEdge = depDict.lookupOrDefault<scalar>("edgeExclusion", 2e-6);
-const scalar depROILength = depDict.lookupOrDefault<scalar>("roiHalfLength", 180e-6);
-const label depNy = depDict.lookupOrDefault<label>("sampleNy", 24);
-const label depNz = depDict.lookupOrDefault<label>("sampleNz", 32);
-const scalar depMinSteadyTime = depDict.lookupOrDefault<scalar>("minimumSteadyTime", 0.4);
-const scalar depSteadyWindow = depDict.lookupOrDefault<scalar>("steadyWindow", 0.2);
-const scalar depTol = depDict.lookupOrDefault<scalar>("relativeTolerance", 1e-4);
-const scalar depMassTol = depDict.lookupOrDefault<scalar>("massTolerance", 1e-5);
-const scalar depMonitorInterval = depDict.lookupOrDefault<scalar>("monitorInterval", 0.01);
-const Switch depAutoStop = depDict.lookupOrDefault<Switch>("stopWhenStationary", true);
-if (depNy < 2 || depNz < 2 || depOffset <= 0 || depEdge < 0 ||
-    depHalfUp-depHalfDown-2*depEdge <= 0 || depHalfHeight-depEdge <= 0)
-{
-    FatalErrorInFunction << "Invalid deposition sampling geometry" << exit(FatalError);
-}
-volVectorField wallShearStressTotal
+const word depModel(depDict.lookup("model"));
+const scalar halfUp = readScalar(depDict.lookup("upstreamHalfWidth"));
+const scalar offset = readScalar(depDict.lookup("approachOffset"));
+const scalar depth = readScalar(depDict.lookup("meshDepth"));
+const scalar qHalf = readScalar(depDict.lookup("qHalfPerDepth"));
+const scalar depEta = readScalar(depDict.lookup("outletSolventViscosity"));
+const scalar depTol = depDict.lookupOrDefault<scalar>("relativeTolerance", 1e-3);
+const scalar resTol = depDict.lookupOrDefault<scalar>("residualTolerance", 1e-5);
+const scalar massTol = depDict.lookupOrDefault<scalar>("massTolerance", 1e-5);
+const label monitorEvery = depDict.lookupOrDefault<label>("monitorEvery", 10);
+const label stableChecks = depDict.lookupOrDefault<label>("stableChecks", 3);
+const scalar outletRelax = depDict.lookupOrDefault<scalar>("outletRelaxation", 0.3);
+const bool elastic = depModel == "peo";
+const label inletID = mesh.boundaryMesh().findPatchID("inlet");
+const label outletID = mesh.boundaryMesh().findPatchID("outlet");
+if (depth <= 0 || qHalf <= 0 || depEta <= 0 || offset <= 0 || monitorEvery < 1 ||
+    stableChecks < 1 || depTol <= 0 || resTol <= 0 || massTol <= 0 ||
+    outletRelax <= 0 || outletRelax > 1 || mesh.nGeometricD() != 2 ||
+    inletID < 0 || outletID < 0)
+    FatalErrorInFunction << "Invalid 2D mesh or steady calculation parameters" << exit(FatalError);
+if (!p.boundaryField()[outletID].fixesValue())
+    FatalErrorInFunction << "Outlet p must use fixedValue" << exit(FatalError);
+
+volScalarField pPa
 (
-    IOobject("wallShearStressTotal", runTime.timeName(), mesh,
-             IOobject::NO_READ, IOobject::AUTO_WRITE),
-    mesh, dimensionedVector("zero", dimPressure, vector::zero)
+    IOobject("p_Pa", runTime.timeName(), mesh, IOobject::NO_READ, IOobject::AUTO_WRITE),
+    p*constEq.rho()
 );
 volScalarField N1
 (
     IOobject("N1", runTime.timeName(), mesh, IOobject::NO_READ, IOobject::AUTO_WRITE),
     mesh, dimensionedScalar("zero", dimPressure, 0)
 );
-volScalarField pPa
-(
-    IOobject("p_Pa", runTime.timeName(), mesh, IOobject::NO_READ, IOobject::AUTO_WRITE),
-    p*constEq.rho()
-);
-// State change is checked on the contraction ROI, not diluted by long ducts.
-vectorField depPrevU(U.primitiveField());
-symmTensorField depPrevTau(tauTotal.primitiveField());
-scalar depPrevWall = 0, depPrevApproach = 0, depPrevDP = 0;
-scalar depStableSince = -1;
-bool depHavePrevious = false;
-scalar depLastMonitor = -GREAT;
-scalarField depROIVolume(mesh.nCells(), 0.0);
-forAll(depROIVolume, celli)
+DynamicList<WallRow> localWalls;
+label wallPatchID[3];
+for (label w=0; w<3; ++w)
 {
-    if (mag(mesh.C()[celli].x()) <= depROILength)
-        depROIVolume[celli] = mesh.V()[celli];
+    const label k = mesh.boundaryMesh().findPatchID(wallPatches[w]);
+    if (k<0) FatalErrorInFunction << "Missing " << wallPatches[w] << exit(FatalError);
+    wallPatchID[w]=k;
+    const fvPatch& patch = mesh.boundary()[k];
+    forAll(patch.Cf(), i)
+    {
+        const point& pFace = patch.Cf()[i];
+        WallRow row;
+        row[0]=w; row[1]=w==1 ? halfUp-pFace.y() : pFace.x();
+        row[2]=pFace.x(); row[3]=pFace.y(); row[4]=patch.magSf()[i]/depth;
+        localWalls.append(row);
+    }
 }
-pointField depSamplePoints(2*depNy*depNz);
-const scalar depDY = (depHalfUp-depHalfDown-2*depEdge)/depNy;
-const scalar depDZ = 2*(depHalfHeight-depEdge)/depNz;
-label depPointIndex = 0;
-for (label side = -1; side <= 1; side += 2)
-    for (label jy = 0; jy < depNy; ++jy)
-        for (label jz = 0; jz < depNz; ++jz)
-            depSamplePoints[depPointIndex++] = point
-            (
-                -depOffset,
-                side*(depHalfDown+depEdge+(jy+0.5)*depDY),
-                -depHalfHeight+depEdge+(jz+0.5)*depDZ
-            );
-meshSearch depSearch(mesh);
-labelList depSampleCell(depSamplePoints.size(), -1);
-labelList depSampleOwner(depSamplePoints.size(), labelMax);
-forAll(depSamplePoints, pointi)
+List<List<WallRow>> byProc = collectRows<WallRow>(localWalls);
+Pstream::scatterList(byProc);
+label wallStart=0;
+DynamicList<WallRow> wallRows;
+forAll(byProc, proc)
 {
-    depSampleCell[pointi] = depSearch.findCell(depSamplePoints[pointi]);
-    if (depSampleCell[pointi] >= 0) depSampleOwner[pointi] = Pstream::myProcNo();
+    if (proc==Pstream::myProcNo()) wallStart=wallRows.size();
+    wallRows.append(byProc[proc]);
 }
-Pstream::listCombineGather(depSampleOwner, minEqOp<label>());
-Pstream::listCombineScatter(depSampleOwner);
-forAll(depSampleOwner, pointi)
+const label nWall=wallRows.size();
+pointField samplePoints(nWall);
+meshSearch search(mesh);
+labelList sampleCell(nWall,-1), owner(nWall,labelMax);
+forAll(wallRows,i)
 {
-    if (depSampleOwner[pointi] == labelMax)
-        FatalErrorInFunction << "Approach sample outside mesh: " << depSamplePoints[pointi]
-            << exit(FatalError);
+    const WallRow& r=wallRows[i];
+    const bool step=label(r[0])==1;
+    samplePoints[i]=point(r[2]-(step?offset:0),r[3]-(step?0:offset),0);
+    sampleCell[i]=search.findCell(samplePoints[i]);
+    if (sampleCell[i]>=0) owner[i]=Pstream::myProcNo();
 }
-const fileName depGlobalCase = Pstream::parRun() ? runTime.path()/".." : runTime.path();
-const fileName depOutDir = depGlobalCase/"postProcessing"/"deposition";
+Pstream::listCombineGather(owner,minEqOp<label>());
+Pstream::listCombineScatter(owner);
+forAll(owner,i) if (owner[i]==labelMax)
+    FatalErrorInFunction << "Wall-offset sample outside mesh at " << samplePoints[i] << exit(FatalError);
+const fileName casePath = Pstream::parRun() ? runTime.path()/".." : runTime.path();
+const fileName depOutDir = casePath/"postProcessing"/"deposition";
 if (Pstream::master())
 {
     mkDir(depOutDir);
-    const fileName csvPath = depOutDir/"metrics.csv";
-    if (!isFile(csvPath))
-    {
-        std::ofstream out(csvPath.c_str());
-        out << "time,Qin_m3_s,Qout_m3_s,massImbalance,deltaP_Pa,"
-            << "wallShearMean_Pa,wallShearMax_Pa,downstreamWallShearMean_Pa,"
-            << "approachFlux_m3_s,approachNetFlux_m3_s,approachOffset_m,"
-            << "relativeU,relativeTau,relativeWall,relativeApproach,relativePressure,"
-            << "maxVelocity_m_s,maxN1_Pa,stableDuration_s\n";
-    }
+    const fileName history = depOutDir/"metrics.csv";
+    const bool newHistory = !isFile(history) || fileSize(history)==0;
+    std::ofstream metrics(history.c_str(),std::ios::app);
+    if (newHistory) metrics << "iteration,Qin_m2_s,Qout_m2_s,massImbalance,residualU,residualP,"
+            << "residualTheta1,residualTheta2,relativeWall,relativeApproach,relativeApproachProfile,"
+            << "stepApproach_m2_s,stepApproachFraction,outletTractionMax_Pa,stableChecks\n";
 }
+scalarField prevWall(nWall,0), prevNormal(nWall,0);
+FixedList<scalar,3> prevQ(scalar(0));
+bool havePrevious=false;
+label consecutive=0;

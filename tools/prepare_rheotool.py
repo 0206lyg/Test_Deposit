@@ -206,6 +206,30 @@ def main():
     text = text.replace('      case pfExpt :', '      case pfExpt :\n        depDiagnostics_.check(1, theta_, tau_, eigVals_, eigVecs_, lambda, etaP, epsilon_.value(), zeta_.value(), &L, &extFun);')
     text = text.replace('    calcEig(theta_, eigVals_, eigVecs_);', '    depDiagnostics_.check(2, theta_, tau_, eigVals_, eigVecs_, lambda, etaP, epsilon_.value(), zeta_.value(), &L);\n    calcEig(theta_, eigVals_, eigVecs_);\n    depDiagnostics_.check(3, theta_, tau_, eigVals_, eigVecs_, lambda, etaP, epsilon_.value(), zeta_.value(), &L);')
     text = text.replace('    tau_.correctBoundaryConditions();', '    tau_.correctBoundaryConditions();\n    depDiagnostics_.success(L, theta_);')
+    # At rest the explicit relaxation source is zero but its derivative is
+    # -I/lambda. With a steady upwind operator a closed/slow cell otherwise
+    # has almost no diagonal. Add D*(theta_new-theta_old) only to the Picard
+    # iteration. D bounds the scales of the deformation and ePTT relaxation
+    # derivatives. The correction vanishes at the steady fixed point.
+    text = replace_exact(text, '    thetaEqn.relax();', '''    if (U().mesh().steady() && PTTFunction_ == pfExpt)
+    {
+        const scalar eps = epsilon_.value()/(1-zeta_.value());
+        forAll(theta_, celli)
+        {
+            const tensor& d = eigVals_[celli];
+            const scalar invMin = 1/min(d.xx(), min(d.yy(), d.zz()));
+            const scalar invMax = 1/max(d.xx(), max(d.yy(), d.zz()));
+            const scalar trace = depTraceC[celli];
+            const scalar f = Foam::exp(eps*(trace-3));
+            const scalar relaxRate = f/lambda[celli]
+                *(invMin + eps*trace*max(mag(invMin-1), mag(invMax-1)));
+            const scalar shift = U().mesh().V()[celli]
+                *(relaxRate + 2*mag(L[celli]));
+            thetaEqn.diag()[celli] += shift;
+            thetaEqn.source()[celli] += shift*theta_[celli];
+        }
+    }
+    thetaEqn.relax();''')
     ptt.write_text(text)
     make = output / "Make"
     make.mkdir(exist_ok=True)
@@ -221,7 +245,7 @@ LIB_LIBS = \\
     -lfiniteVolume \\
     -lmeshTools
 ''')
-    (output / "PROVENANCE.json").write_text(json.dumps({"upstream": "https://github.com/fppimenta/rheoTool", "commit": COMMIT, "source_subtree": "of90/src/libs", "original_source_sha256": hashes, "patches": ["Remove PETSc/block-coupled base-class dependencies and fail explicitly if requested", "Use the continuous repeated-eigenvalue log-conformation decomposition limit", "Avoid dereferencing a missing optional thermo dictionary", "Evaluate PTT spectral rotations, diagonal reciprocals, trace and stress per cell and boundary face without tensor-field temporary reuse", "Add ePTT input/exponential/conversion guards and isolated diagnostic snapshots without clipping"]}, indent=2) + "\n")
+    (output / "PROVENANCE.json").write_text(json.dumps({"upstream": "https://github.com/fppimenta/rheoTool", "commit": COMMIT, "source_subtree": "of90/src/libs", "original_source_sha256": hashes, "patches": ["Remove PETSc/block-coupled base-class dependencies and fail explicitly if requested", "Use the continuous repeated-eigenvalue log-conformation decomposition limit", "Avoid dereferencing a missing optional thermo dictionary", "Evaluate PTT spectral rotations, diagonal reciprocals, trace and stress per cell and boundary face without tensor-field temporary reuse", "Add ePTT input/exponential/conversion guards and isolated diagnostic snapshots without clipping", "Add a cancelling Picard diagonal for the steady exponential PTT equation"]}, indent=2) + "\n")
     changed = 0
     generated = {p.relative_to(output): p for p in output.rglob("*") if p.is_file()}
     for relative, source in generated.items():

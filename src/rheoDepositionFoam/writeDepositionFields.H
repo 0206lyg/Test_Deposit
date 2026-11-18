@@ -1,148 +1,132 @@
-if (runTime.outputTime() || runTime.value()-depLastMonitor >= depMonitorInterval)
+const label iteration = label(runTime.value()+0.5);
+const bool monitor = (iteration%monitorEvery == 0) || runTime.writeTime() || !runTime.running();
+if (monitor)
 {
-    const tmp<volSymmTensorField> depPolymer = constEq.tau();
-    N1 = depPolymer().component(symmTensor::XX)-depPolymer().component(symmTensor::YY);
+    tauTotal = constEq.tauTotal();
     pPa = p*constEq.rho();
-    wallShearStressTotal = dimensionedVector("zero", dimPressure, vector::zero);
-    scalar depWallIntegral = 0, depWallArea = 0, depWallMax = 0;
-    scalar depDownIntegral = 0, depDownArea = 0;
-    scalar depQin = 0, depQout = 0, depPIn = 0, depPOut = 0;
-    scalar depInArea = 0, depOutArea = 0;
-    forAll(mesh.boundary(), patchi)
+    const tmp<volSymmTensorField> polymer = constEq.tau();
+    N1 = polymer().component(symmTensor::XX)-polymer().component(symmTensor::YY);
+    scalar qIn=-gSum(phi.boundaryField()[inletID])/depth;
+    scalar qOut=gSum(phi.boundaryField()[outletID])/depth;
+    scalar massError=max(mag(qIn-qOut),mag(qIn-qHalf))/qHalf;
+    const scalar residualU=equationResidual<vector>(mesh,"U");
+    const scalar residualP=equationResidual<scalar>(mesh,"p");
+    const scalar residual1=elastic ? equationResidual<symmTensor>(mesh,"theta_mode1") : 0;
+    const scalar residual2=elastic ? equationResidual<symmTensor>(mesh,"theta_mode2") : 0;
+
+    const vectorField outN(mesh.boundary()[outletID].nf());
+    scalar outletTraction=0, outletStressScale=1e-8;
+    forAll(outN, i)
     {
-        const fvPatch& patch = mesh.boundary()[patchi];
-        const scalarField& area = patch.magSf();
-        if (patch.name() == "inlet")
+        const symmTensor& t = tauTotal.boundaryField()[outletID][i];
+        outletTraction=max(outletTraction,mag((t & outN[i])-pPa.boundaryField()[outletID][i]*outN[i]));
+        outletStressScale=max(outletStressScale,mag(t));
+    }
+    reduce(outletTraction,maxOp<scalar>()); reduce(outletStressScale,maxOp<scalar>());
+
+    // Positive signed velocity points from fluid toward the respective wall.
+    scalarField wallNormal(nWall,0);
+    forAll(samplePoints,i) if (owner[i]==Pstream::myProcNo())
+    {
+        const direction axis = label(wallRows[i][0])==1 ? 0 : 1;
+        wallNormal[i]=planarNormalVelocity(mesh,phi,sampleCell[i],samplePoints[i],axis);
+    }
+    Pstream::listCombineGather(wallNormal,plusEqOp<scalar>());
+    Pstream::listCombineScatter(wallNormal);
+
+    vectorField stress(nWall,vector::zero); // total, polymer mode 1, polymer mode 2
+    label globalRow=wallStart;
+    for (label w=0; w<3; ++w)
+    {
+        const label k=wallPatchID[w];
+        const vectorField n(mesh.boundary()[k].nf());
+        const vector tang = w==1 ? vector(0,-1,0) : vector(1,0,0);
+        forAll(n, i)
         {
-            depQin -= sum(phi.boundaryField()[patchi]);
-            depPIn += sum(pPa.boundaryField()[patchi]*area);
-            depInArea += sum(area);
-        }
-        if (patch.name() == "outlet")
-        {
-            depQout += sum(phi.boundaryField()[patchi]);
-            depPOut += sum(pPa.boundaryField()[patchi]*area);
-            depOutArea += sum(area);
-        }
-        if (!isA<wallFvPatch>(patch)) continue;
-        const vectorField normals(patch.nf());
-        const vectorField traction(tauTotal.boundaryField()[patchi] & normals);
-        vectorField tangential(traction - normals*(normals & traction));
-        wallShearStressTotal.boundaryFieldRef()[patchi] == tangential;
-        const vectorField& centres = patch.Cf();
-        forAll(area, facei)
-        {
-            const vector& centre = centres[facei];
-            const scalar absY = mag(centre.y());
-            const bool awayFromHeightEdges = mag(centre.z()) < depHalfHeight-depEdge;
-            const scalar stress = mag(tangential[facei]);
-            if (patch.name() == "wallsContraction" && awayFromHeightEdges &&
-                absY > depHalfDown+depEdge && absY < depHalfUp-depEdge)
+            vector& v=stress[globalRow++];
+            v.x() = tang & (tauTotal.boundaryField()[k][i] & n[i]);
+            if (elastic)
             {
-                depWallIntegral += stress*area[facei];
-                depWallArea += area[facei];
-                depWallMax = max(depWallMax, stress);
-            }
-            if (patch.name() == "wallsDownstream" && awayFromHeightEdges &&
-                centre.x() > depEdge && centre.x() < depROILength)
-            {
-                depDownIntegral += stress*area[facei];
-                depDownArea += area[facei];
+                v.y() = tang & (mesh.lookupObject<volSymmTensorField>("tau_mode1").boundaryField()[k][i] & n[i]);
+                v.z() = tang & (mesh.lookupObject<volSymmTensorField>("tau_mode2").boundaryField()[k][i] & n[i]);
             }
         }
     }
-    reduce(depQin, sumOp<scalar>()); reduce(depQout, sumOp<scalar>());
-    reduce(depPIn, sumOp<scalar>()); reduce(depPOut, sumOp<scalar>());
-    reduce(depInArea, sumOp<scalar>()); reduce(depOutArea, sumOp<scalar>());
-    reduce(depWallIntegral, sumOp<scalar>()); reduce(depWallArea, sumOp<scalar>());
-    reduce(depDownIntegral, sumOp<scalar>()); reduce(depDownArea, sumOp<scalar>());
-    reduce(depWallMax, maxOp<scalar>());
-    const scalar depQScale = max(mag(depQin), scalar(1e-30));
-    const scalar depMass = mag(depQout-depQin)/depQScale;
-    const scalar depDP = depPIn/max(depInArea,VSMALL)-depPOut/max(depOutArea,VSMALL);
-    const scalar depWallMean = depWallIntegral/max(depWallArea,VSMALL);
-    const scalar depDownMean = depDownIntegral/max(depDownArea,VSMALL);
-    interpolationCellPoint<vector> depInterpolate(U);
-    List<vector> depSampleU(depSamplePoints.size(), vector::zero);
-    forAll(depSamplePoints, pointi)
-        if (depSampleOwner[pointi] == Pstream::myProcNo())
-            depSampleU[pointi] = depInterpolate.interpolate(depSamplePoints[pointi], depSampleCell[pointi]);
-    Pstream::listCombineGather(depSampleU, plusEqOp<vector>());
-    Pstream::listCombineScatter(depSampleU);
-    scalar depApproach = 0, depNetApproach = 0;
-    forAll(depSampleU, pointi)
+    Pstream::listCombineGather(stress,plusEqOp<vector>());
+    Pstream::listCombineScatter(stress);
+    FixedList<scalar,3> q(scalar(0)), wallDiff(scalar(0)), wallNorm(scalar(0));
+    FixedList<scalar,3> normalDiff(scalar(0)), normalNorm(scalar(0));
+    forAll(wallRows,i)
     {
-        depApproach += max(depSampleU[pointi].x(), scalar(0))*depDY*depDZ;
-        depNetApproach += depSampleU[pointi].x()*depDY*depDZ;
+        const label w=label(wallRows[i][0]);
+        const scalar ds=wallRows[i][4];
+        q[w]+=max(wallNormal[i],scalar(0))*ds;
+        wallDiff[w]+=mag(stress[i].x()-prevWall[i])*ds;
+        wallNorm[w]+=mag(stress[i].x())*ds;
+        normalDiff[w]+=mag(wallNormal[i]-prevNormal[i])*ds;
+        normalNorm[w]+=mag(wallNormal[i])*ds;
+        prevWall[i]=stress[i].x();
     }
-    // Ratios are changes over one output interval, with physical floors near zero.
-    const scalar depUNorm = gSum(depROIVolume*magSqr(U.primitiveField()));
-    const scalar depTNorm = gSum(depROIVolume*magSqr(tauTotal.primitiveField()));
-    const scalar depRelU = depHavePrevious ? Foam::sqrt
-    (
-        gSum(depROIVolume*magSqr(U.primitiveField()-depPrevU))/max(depUNorm, scalar(1e-40))
-    ) : 1;
-    const scalar depRelTau = depHavePrevious ? Foam::sqrt
-    (
-        gSum(depROIVolume*magSqr(tauTotal.primitiveField()-depPrevTau))/max(depTNorm, scalar(1e-30))
-    ) : 1;
-    const scalar depRelWall = depHavePrevious ? mag(depWallMean-depPrevWall)/max(mag(depWallMean),scalar(1e-6)) : 1;
-    const scalar depRelApproach = depHavePrevious ? mag(depApproach-depPrevApproach)/max(mag(depApproach),depQScale*1e-6) : 1;
-    const scalar depRelDP = depHavePrevious ? mag(depDP-depPrevDP)/max(mag(depDP),scalar(1e-6)) : 1;
-    const bool depStable = depHavePrevious && runTime.value() >= depMinSteadyTime &&
-        depRelU < depTol && depRelTau < depTol && depRelWall < depTol &&
-        depRelApproach < depTol && depRelDP < depTol && depMass < depMassTol;
-    if (depStable)
+    scalar relWall=0, relFlux=0, relNormal=0;
+    for (label w=0; w<3; ++w)
     {
-        if (depStableSince < 0) depStableSince = runTime.value();
+        relWall=max(relWall,wallDiff[w]/max(wallNorm[w],scalar(1e-13)));
+        relFlux=max(relFlux,mag(q[w]-prevQ[w])/max(mag(q[w]),qHalf*1e-5));
+        relNormal=max(relNormal,normalDiff[w]/max(normalNorm[w],qHalf*1e-5));
     }
-    else depStableSince = -1;
-    const scalar depDuration = depStableSince < 0 ? 0 : runTime.value()-depStableSince;
-    const bool depStationary = depStable && depDuration+SMALL >= depSteadyWindow;
-    const scalar depUMax = gMax(mag(U.primitiveField()));
-    const scalar depNMax = gMax(N1.primitiveField());
+    consecutive = havePrevious && max(max(residualU,residualP),max(residual1,residual2))<resTol &&
+        max(relWall,max(relNormal,relFlux))<depTol && massError<massTol &&
+        outletTraction/outletStressScale<depTol ? consecutive+1 : 0;
+    const bool stationary=consecutive>=stableChecks;
+    prevNormal=wallNormal; prevQ=q; havePrevious=true;
+
     if (Pstream::master())
     {
-        std::ofstream out((depOutDir/"metrics.csv").c_str(), std::ios::app);
+        std::ofstream out((depOutDir/"metrics.csv").c_str(),std::ios::app);
         out.precision(16);
-        out << runTime.value() << ',' << depQin << ',' << depQout << ',' << depMass << ',' << depDP << ','
-            << depWallMean << ',' << depWallMax << ',' << depDownMean << ','
-            << depApproach << ',' << depNetApproach << ',' << depOffset << ','
-            << depRelU << ',' << depRelTau << ',' << depRelWall << ',' << depRelApproach << ',' << depRelDP << ','
-            << depUMax << ',' << depNMax << ',' << depDuration << '\n';
-        if (!out) FatalErrorInFunction << "Could not write metrics.csv" << exit(FatalError);
-        Info<< "Deposition diagnostics: dP=" << depDP << " Pa, step wall traction=" << depWallMean
-            << " Pa, approach=" << depApproach << " m3/s, mass imbalance=" << depMass
-            << ", relative U/tau=" << depRelU << '/' << depRelTau << nl;
-        if (depStationary)
+        out << iteration << ',' << qIn << ',' << qOut << ',' << massError << ','
+            << residualU << ',' << residualP << ',' << residual1 << ',' << residual2 << ','
+            << relWall << ',' << relFlux << ',' << relNormal << ',' << q[1] << ',' << q[1]/qHalf
+            << ',' << outletTraction << ',' << consecutive << '\n';
+        out.close();
+        if (!out) FatalErrorInFunction << "Writing metrics.csv failed" << exit(FatalError);
+        Info << "Steady monitor: mass=" << massError << " residual(U,p,theta1,theta2)="
+             << residualU << ',' << residualP << ',' << residual1 << ',' << residual2
+             << " step approach/Qhalf=" << q[1]/qHalf << " wall change=" << relWall
+             << " outlet traction [Pa]=" << outletTraction << " checks=" << consecutive << nl;
+    }
+    if (stationary)
+    {
+        if (Pstream::master())
+        {
+            std::ofstream out((depOutDir/"wall_profile.csv").c_str());
+            out.precision(16);
+            out << "iteration,wall,s_m,x_wall_m,y_wall_m,x_sample_m,y_sample_m,ds_m,"
+                << "u_toward_m_s,tau_total_Pa,tau_viscous_Pa,tau_mode1_Pa,tau_mode2_Pa\n";
+            forAll(wallRows,i)
+            {
+                const WallRow& r=wallRows[i];
+                out << iteration << ',' << wallNames[label(r[0])] << ',' << r[1] << ',' << r[2]
+                    << ',' << r[3] << ',' << samplePoints[i].x() << ',' << samplePoints[i].y()
+                    << ',' << r[4] << ',' << wallNormal[i] << ',' << stress[i].x()
+                    << ',' << stress[i].x()-stress[i].y()-stress[i].z()
+                    << ',' << stress[i].y() << ',' << stress[i].z() << '\n';
+            }
+            out.close();
+            if (!out) FatalErrorInFunction << "Writing wall_profile.csv failed" << exit(FatalError);
+        }
+        writeCells(mesh,U,phi,depth,iteration,depOutDir);
+        if (!runTime.writeAndEnd())
+            FatalErrorInFunction << "Writing the converged checkpoint failed" << exit(FatalError);
+        if (Pstream::master())
         {
             std::ofstream marker((depOutDir/"stationary.json").c_str());
             marker.precision(16);
-            marker << "{\"status\":\"stationary\",\"time\":" << runTime.value()
-                << ",\"relativeU\":" << depRelU << ",\"relativeTau\":" << depRelTau
-                << ",\"relativeWall\":" << depRelWall << ",\"relativeApproach\":" << depRelApproach
-                << ",\"relativePressure\":" << depRelDP << ",\"massImbalance\":" << depMass
-                << ",\"stableDuration_s\":" << depDuration << "}\n";
+            marker << "{\"status\":\"stationary\",\"iteration\":" << iteration << ",\"time\":" << iteration
+                   << ",\"qHalfPerDepth_m2_s\":" << qHalf << ",\"massImbalance\":" << massError
+                   << ",\"stableChecks\":" << consecutive << "}\n";
+            marker.close();
+            if (!marker) FatalErrorInFunction << "Writing stationary.json failed" << exit(FatalError);
         }
-        // The grid and signed Ux values make the approach integral auditable.
-        std::ofstream samples((depOutDir/"approach_latest.csv").c_str());
-        samples.precision(16);
-        samples << "x_m,y_m,z_m,Ux_m_s,Uy_m_s,Uz_m_s,area_m2\n";
-        forAll(depSamplePoints, pointi)
-        {
-            const vector& pt = depSamplePoints[pointi];
-            const vector& vel = depSampleU[pointi];
-            samples << pt.x() << ',' << pt.y() << ',' << pt.z() << ',' << vel.x() << ','
-                << vel.y() << ',' << vel.z() << ',' << depDY*depDZ << '\n';
-        }
-    }
-    depPrevU = U.primitiveField(); depPrevTau = tauTotal.primitiveField();
-    depPrevWall = depWallMean; depPrevApproach = depApproach; depPrevDP = depDP;
-    depHavePrevious = true;
-    depLastMonitor = runTime.value();
-    if (depStationary && depAutoStop)
-    {
-        Info<< "Stationarity criteria sustained for " << depDuration << " s; writing final fields and stopping." << nl;
-        runTime.writeAndEnd();
     }
 }
